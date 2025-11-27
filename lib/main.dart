@@ -1,18 +1,28 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'user_dao.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicialización FFI para que funcione en Desktop (Windows, Linux, macOS)
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
   runApp(const MyApp());
 }
 
-// Enums para el estado
+// Enums
 enum LetterStatus { initial, correct, inWord, notInWord }
 enum GameState { playing, won, lost }
 
-// Widget principal de la aplicación
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
@@ -24,9 +34,9 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         ),
-        home: const MyHomePage(),
+        home: const LoginScreen(),
       ),
     );
   }
@@ -45,6 +55,9 @@ class MyAppState extends ChangeNotifier {
   bool shouldShowHint = false;
   final Map<String, LetterStatus> keyStatus = {};
 
+  // --- GESTIÓN DE USUARIO ---
+  String? currentUser; // Nombre del usuario logueado
+
   late Future<void> initializationFuture;
 
   MyAppState() {
@@ -62,11 +75,9 @@ class MyAppState extends ChangeNotifier {
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
       _wordBank = (jsonMap['words'] as List<dynamic>).cast<Map<String, dynamic>>();
     } catch (e) {
-      print("Error al cargar el banco de palabras: $e");
-      _wordBank = [
-        {"word": "FLAME", "hint": "Fuego"},
-        {"word": "OCEAN", "hint": "Mucha agua"}
-      ];
+      print("Error cargando JSON: $e");
+      // Fallback
+      _wordBank = [{"word": "GAMER", "hint": "Juega mucho"}];
     }
   }
 
@@ -75,10 +86,16 @@ class MyAppState extends ChangeNotifier {
       final randomEntry = _wordBank[Random().nextInt(_wordBank.length)];
       secretWord = randomEntry['word'].toString().toUpperCase();
       currentHint = randomEntry['hint'].toString();
-      print('Palabra secreta: $secretWord, Pista: $currentHint');
+      print("Secreto: $secretWord"); // Para depuración
     }
   }
 
+  void setUser(String username) {
+    currentUser = username;
+    notifyListeners();
+  }
+
+  // --- LÓGICA DE JUEGO ---
   void resetGame() {
     grid = List.generate(6, (_) => List.filled(5, ''));
     gridStatus = List.generate(6, (_) => List.filled(5, LetterStatus.initial));
@@ -107,27 +124,29 @@ class MyAppState extends ChangeNotifier {
     }
   }
 
-  void submitGuess() {
+  void submitGuess() async {
     if (gameState != GameState.playing || currentCol != 5 || currentRow >= 6) return;
 
     final guess = grid[currentRow].join();
     final List<LetterStatus> rowStatus = List.filled(5, LetterStatus.notInWord);
-    final List<bool> secretWordLetterUsed = List.filled(5, false);
+    final List<bool> secretWordUsed = List.filled(5, false);
 
+    // Verificación Exacta (Verde)
     for (int i = 0; i < 5; i++) {
       if (guess[i] == secretWord[i]) {
         rowStatus[i] = LetterStatus.correct;
         keyStatus[guess[i]] = LetterStatus.correct;
-        secretWordLetterUsed[i] = true;
+        secretWordUsed[i] = true;
       }
     }
 
+    // Verificación Parcial (Amarillo)
     for (int i = 0; i < 5; i++) {
       if (rowStatus[i] != LetterStatus.correct) {
         for (int j = 0; j < 5; j++) {
-          if (!secretWordLetterUsed[j] && guess[i] == secretWord[j]) {
+          if (!secretWordUsed[j] && guess[i] == secretWord[j]) {
             rowStatus[i] = LetterStatus.inWord;
-            secretWordLetterUsed[j] = true;
+            secretWordUsed[j] = true;
             if (keyStatus[guess[i]] != LetterStatus.correct) {
               keyStatus[guess[i]] = LetterStatus.inWord;
             }
@@ -137,6 +156,7 @@ class MyAppState extends ChangeNotifier {
       }
     }
 
+    // Actualizar Teclado (Gris)
     for (int i = 0; i < 5; i++) {
       if (rowStatus[i] == LetterStatus.notInWord) {
         if (keyStatus[guess[i]] != LetterStatus.correct && keyStatus[guess[i]] != LetterStatus.inWord) {
@@ -147,12 +167,23 @@ class MyAppState extends ChangeNotifier {
 
     gridStatus[currentRow] = rowStatus;
 
-    if (currentRow == 1) {
-      shouldShowHint = true;
-    }
+    if (currentRow == 1) shouldShowHint = true;
 
+    // --- LÓGICA DE VICTORIA Y PUNTUACIÓN ---
     if (guess == secretWord) {
       gameState = GameState.won;
+
+      // Calcular puntos
+      int points = 0;
+      if (currentRow < 6) { // Se usa < 6 para que la última fila dé 1 punto
+        points = 6 - currentRow;
+      }
+
+      // Guardar en SQLite usando el DAO
+      if (currentUser != null && points > 0) {
+        await UserDao.instance.addScore(currentUser!, points);
+      }
+
     } else if (currentRow == 5) {
       gameState = GameState.lost;
     }
@@ -163,9 +194,93 @@ class MyAppState extends ChangeNotifier {
   }
 }
 
-// Página principal con navegación
+// --- LOGIN ---
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _userController = TextEditingController();
+  final _passController = TextEditingController();
+  String _errorMessage = '';
+
+  Future<void> _handleLogin() async {
+    final user = _userController.text.trim();
+    final pass = _passController.text.trim();
+
+    if (user.isEmpty || pass.isEmpty) {
+      setState(() => _errorMessage = "Rellena ambos campos");
+      return;
+    }
+
+    bool success = await UserDao.instance.loginOrRegister(user, pass);
+
+    if (success) {
+      if (mounted) {
+        final appState = context.read<MyAppState>();
+        appState.setUser(user);
+        appState.resetGame();
+
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MyHomePage()));
+      }
+    } else {
+      setState(() => _errorMessage = "Contraseña incorrecta para ese usuario");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_person, size: 80, color: Colors.deepPurple),
+            const SizedBox(height: 20),
+            const Text("DJ Wordle Login", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 40),
+            TextField(
+              controller: _userController,
+              decoration: const InputDecoration(labelText: "Usuario", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _passController,
+              decoration: const InputDecoration(labelText: "Contraseña", border: OutlineInputBorder()),
+              obscureText: true,
+            ),
+            if (_errorMessage.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(_errorMessage, style: const TextStyle(color: Colors.red)),
+              ),
+            const SizedBox(height: 30),
+            ElevatedButton(
+              onPressed: _handleLogin,
+              style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white
+              ),
+              child: const Text("ENTRAR / REGISTRARSE"),
+            ),
+            const SizedBox(height: 10),
+            const Text("Si el usuario no existe, se creará automáticamente.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- PANTALLA PRINCIPAL ---
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  static final GlobalKey<_MyHomePageState> globalKey = GlobalKey<_MyHomePageState>();
+  MyHomePage({Key? key}) : super(key: globalKey);
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
@@ -173,161 +288,228 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int selectedIndex = 1;
 
+  void _selectPage(int index, {bool shouldCloseDrawer = false}) {
+    setState(() {
+      selectedIndex = index;
+      if (shouldCloseDrawer) Navigator.pop(context);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<MyAppState>();
+
     Widget page;
     switch (selectedIndex) {
-      case 0: page = const MainPage(); break;
+      case 0: page = const Center(child: Text("Bienvenido")); break;
       case 1: page = const GamePage(); break;
-      case 2: page = const OptionsPage(); break;
-      case 3: page = const EndGamePage(); break;
+      case 2: page = const Center(child: Text("Opciones")); break;
+      case 3: page = const Center(child: Text("Game Over Info")); break;
       case 4: page = const RankingPage(); break;
-      default: throw UnimplementedError('No hay página para el índice $selectedIndex');
+      default: throw UnimplementedError();
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dj Wordle')),
-      body: Center(child: page),
+      appBar: AppBar(title: Text('Jugador: ${appState.currentUser}')),
+      body: page,
       drawer: Drawer(
         child: ListView(
           children: [
-            const DrawerHeader(decoration: BoxDecoration(color: Colors.blueAccent), child: Text('Menú de navegación', style: TextStyle(color: Colors.white, fontSize: 20))),
-            ListTile(leading: const Icon(Icons.home), title: const Text('Menú principal'), onTap: () => _selectPage(0)),
-            ListTile(leading: const Icon(Icons.videogame_asset), title: const Text('Juego'), onTap: () => _selectPage(1)),
-            ListTile(leading: const Icon(Icons.settings), title: const Text('Menú de opciones'), onTap: () => _selectPage(2)),
-            ListTile(leading: const Icon(Icons.crop), title: const Text('Menú Game Over'), onTap: () => _selectPage(3)),
-            ListTile(leading: const Icon(Icons.list), title: const Text('Ranking'), onTap: () => _selectPage(4)),
+            DrawerHeader(
+              decoration: const BoxDecoration(color: Colors.deepPurple),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Menú', style: TextStyle(color: Colors.white, fontSize: 24)),
+                  Text('${appState.currentUser}', style: const TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+            ListTile(leading: const Icon(Icons.gamepad), title: const Text('Juego'), onTap: () => _selectPage(1, shouldCloseDrawer: true)),
+            ListTile(leading: const Icon(Icons.leaderboard), title: const Text('Ranking'), onTap: () => _selectPage(4, shouldCloseDrawer: true)),
+            // Botón de salir
+            ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Cerrar Sesión', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                }
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  void _selectPage(int index) {
-    setState(() {
-      selectedIndex = index;
-      Navigator.pop(context);
-    });
+// --- PANTALLA DE RANKING ---
+class RankingPage extends StatelessWidget {
+  const RankingPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          colors: [Color(0xFF5A768F), Color(0xFF2C3E50)],
+          radius: 1.2,
+        ),
+      ),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        // Llama al DAO para obtener el ranking
+        future: UserDao.instance.getRanking(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text("No hay puntuaciones aún", style: TextStyle(color: Colors.white)));
+          }
+
+          final users = snapshot.data!;
+
+          return Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Text("Ranking Global", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: users.length,
+                  separatorBuilder: (_, __) => const Divider(color: Colors.white24),
+                  itemBuilder: (context, index) {
+                    final user = users[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.amber,
+                        child: Text("#${index + 1}", style: const TextStyle(color: Colors.black)),
+                      ),
+                      title: Text(user['username'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                      trailing: Text("${user['score']} pts", style: const TextStyle(color: Colors.amberAccent, fontSize: 20, fontWeight: FontWeight.bold)),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final homeState = MyHomePage.globalKey.currentState;
+                          if (homeState != null) {
+                            context.read<MyAppState>().resetGame();
+                            homeState._selectPage(1);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text("Volver a Jugar"),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.logout),
+                        label: const Text("Cerrar Sesión"),
+                        onPressed: () {
+                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          backgroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
-// --- PÁGINAS DE LA APP ---
-class MainPage extends StatelessWidget {
-  const MainPage({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('¡Bienvenido a Wordle!'));
-}
-
-class OptionsPage extends StatelessWidget {
-  const OptionsPage({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Página de Opciones'));
-}
-
-class EndGamePage extends StatelessWidget {
-  const EndGamePage({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Página de Fin de Juego'));
-}
-
-class RankingPage extends StatelessWidget {
-  const RankingPage({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Página de Ranking'));
-}
-
-// Página del juego
+// --- GAME PAGE ---
 class GamePage extends StatefulWidget {
   const GamePage({super.key});
   @override
-  _GamePageState createState() => _GamePageState();
+  State<GamePage> createState() => _GamePageState();
 }
 
 class _GamePageState extends State<GamePage> {
+  late MyAppState _appState;
+
   @override
   void initState() {
     super.initState();
+    _appState = context.read<MyAppState>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MyAppState>().addListener(_showEndGameDialogIfNeeded);
+      _appState.addListener(_checkGameState);
     });
   }
 
   @override
   void dispose() {
-    if (mounted) {
-      context.read<MyAppState>().removeListener(_showEndGameDialogIfNeeded);
-    }
+    _appState.removeListener(_checkGameState);
     super.dispose();
   }
 
-  void _showEndGameDialogIfNeeded() {
-    final appState = context.read<MyAppState>();
-    if (appState.gameState != GameState.playing) {
-      _showEndGameDialog(appState.gameState, appState.secretWord);
+  void _checkGameState() {
+    if (_appState.gameState != GameState.playing) {
+      final myHomePageState = MyHomePage.globalKey.currentState;
+      if (myHomePageState != null && myHomePageState.mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (myHomePageState.selectedIndex != 4) {
+            myHomePageState._selectPage(4, shouldCloseDrawer: false);
+          }
+        });
+      }
     }
-  }
-
-  void _showEndGameDialog(GameState gameState, String secretWord) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(gameState == GameState.won ? '¡Has ganado!' : '¡Has perdido!'),
-          content: Text(gameState == GameState.lost ? 'La palabra era: $secretWord' : '¡Felicidades!'),
-          actions: <Widget>[
-            TextButton(child: const Text('JUGAR DE NUEVO'), onPressed: () {
-              Navigator.of(context).pop();
-              context.read<MyAppState>().resetGame();
-            }),
-          ],
-        );
-      },
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: context.read<MyAppState>().initializationFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        } else if (snapshot.hasError) {
-          return const Center(child: Text("Error al cargar el juego"));
-        } else {
+        future: context.read<MyAppState>().initializationFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+
           return Consumer<MyAppState>(
-            builder: (context, appState, child) {
-              return Container(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
+              builder: (context, appState, child) {
+                return Column(
                   children: [
-                    if (appState.shouldShowHint)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12.0),
-                        child: Text("Pista: ${appState.currentHint}", style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
-                      ),
+                    if(appState.shouldShowHint) Padding(padding: const EdgeInsets.all(8.0), child: Text("Pista: ${appState.currentHint}")),
                     const Expanded(child: WordleGrid()),
                     Keyboard(
                       keyStatuses: appState.keyStatus,
                       onLetterPressed: appState.addLetter,
                       onEnterPressed: appState.submitGuess,
                       onDeletePressed: appState.deleteLetter,
-                    ),
+                    )
                   ],
-                ),
-              );
-            },
+                );
+              }
           );
         }
-      },
     );
   }
 }
 
-// --- WIDGETS DE WORDLE ---
+// --- UI DEL JUEGO ---
+//  --- WIDGETS DE WORDLE ---
 class GridTileUI extends StatelessWidget {
   final String letter;
   final LetterStatus status;
