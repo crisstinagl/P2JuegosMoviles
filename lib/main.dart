@@ -385,7 +385,7 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               ClipOval(
-                child: Image.asset('assets/DJ Wordle.png', width: 120, height: 120, fit: BoxFit.cover),
+                child: Image.asset('assets/DJ_Wordle.png', width: 120, height: 120, fit: BoxFit.cover),
               ),
               const SizedBox(height: 20),
               const Text("Inicio de Sesión", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
