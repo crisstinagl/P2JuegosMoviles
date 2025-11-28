@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'user_dao.dart';
+import 'user_dao.dart'; // Asegúrate de que este archivo exista
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -194,7 +194,7 @@ class MyAppState extends ChangeNotifier {
   }
 }
 
-// --- LOGIN ---
+// --- LOGIN (YA MODIFICADO) ---
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -233,51 +233,104 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_person, size: 80, color: Colors.deepPurple),
-            const SizedBox(height: 20),
-            const Text("DJ Wordle Login", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 40),
-            TextField(
-              controller: _userController,
-              decoration: const InputDecoration(labelText: "Usuario", border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _passController,
-              decoration: const InputDecoration(labelText: "Contraseña", border: OutlineInputBorder()),
-              obscureText: true,
-            ),
-            if (_errorMessage.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(_errorMessage, style: const TextStyle(color: Colors.red)),
+    // Fondo de color #C6A4FE (Lila Claro)
+    return Container(
+      color: const Color(0xFFC6A4FE),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Logo Circular
+              ClipOval(
+                child: Image.asset(
+                  'assets/DJ Wordle.png', // <--- RUTA DE TU LOGO
+                  width: 120, // Buen tamaño para un logo en login
+                  height: 120,
+                  fit: BoxFit.cover,
+                ),
               ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: _handleLogin,
-              style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white
+              const SizedBox(height: 20),
+
+              // Título "Inicio de Sesión" (MODIFICADO)
+              const Text(
+                  "Inicio de Sesión",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  )
               ),
-              child: const Text("ENTRAR / REGISTRARSE"),
-            ),
-            const SizedBox(height: 10),
-            const Text("Si el usuario no existe, se creará automáticamente.", style: TextStyle(color: Colors.grey, fontSize: 12)),
-          ],
+              const SizedBox(height: 10), // Espacio entre título y subtítulo
+
+              // Subtítulo de bienvenida (NUEVO)
+              const Text(
+                  "¡Bienvenido! Inicia sesión para empezar a jugar.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white70,
+                  )
+              ),
+              const SizedBox(height: 40),
+
+              // Campo de Usuario
+              TextField(
+                controller: _userController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: "Usuario",
+                  labelStyle: const TextStyle(color: Colors.white70),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+                  // Borde enfocado #976CE1
+                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Campo de Contraseña
+              TextField(
+                controller: _passController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: "Contraseña",
+                  labelStyle: const TextStyle(color: Colors.white70),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+                  // Borde enfocado #976CE1
+                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
+                ),
+                obscureText: true,
+              ),
+              if (_errorMessage.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent)),
+                ),
+              const SizedBox(height: 30),
+              // Botón de Login/Registro #976CE1
+              ElevatedButton(
+                onPressed: _handleLogin,
+                style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    backgroundColor: const Color(0xFF976CE1), // Fondo #976CE1
+                    foregroundColor: Colors.white
+                ),
+                child: const Text("ENTRAR / REGISTRARSE"),
+              ),
+              const SizedBox(height: 10),
+              const Text("Si el usuario no existe, se creará automáticamente.", style: TextStyle(color: Colors.white70, fontSize: 12)),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// --- PANTALLA PRINCIPAL ---
+// --- PANTALLA PRINCIPAL (AppBar y Drawer Modificados) ---
 class MyHomePage extends StatefulWidget {
   static final GlobalKey<_MyHomePageState> globalKey = GlobalKey<_MyHomePageState>();
   MyHomePage({Key? key}) : super(key: globalKey);
@@ -310,139 +363,72 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Jugador: ${appState.currentUser}')),
-      body: page,
+      // AppBar Modificado: Fondo, título centrado (solo usuario) y hamburguesa de color
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFC6A4FE), // Fondo igual al de la GamePage
+        elevation: 0, // Sin sombra
+        centerTitle: true, // Título centrado
+        title: Text( // Solo el nombre de usuario
+            '${appState.currentUser}',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold) // Texto blanco y negrita
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF976CE1)), // Icono de menú (hamburguesa) del color de los botones
+      ),
+      body: Container(
+        color: const Color(0xFFC6A4FE), // Fondo de la pantalla de juego: #C6A4FE
+        child: page,
+      ),
       drawer: Drawer(
-        child: ListView(
-          children: [
-            DrawerHeader(
-              decoration: const BoxDecoration(color: Colors.deepPurple),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Menú', style: TextStyle(color: Colors.white, fontSize: 24)),
-                  Text('${appState.currentUser}', style: const TextStyle(color: Colors.white70)),
-                ],
-              ),
-            ),
-            ListTile(leading: const Icon(Icons.gamepad), title: const Text('Juego'), onTap: () => _selectPage(1, shouldCloseDrawer: true)),
-            ListTile(leading: const Icon(Icons.leaderboard), title: const Text('Ranking'), onTap: () => _selectPage(4, shouldCloseDrawer: true)),
-            // Botón de salir
-            ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text('Cerrar Sesión', style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-                }
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- PANTALLA DE RANKING ---
-class RankingPage extends StatelessWidget {
-  const RankingPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          colors: [Color(0xFF5A768F), Color(0xFF2C3E50)],
-          radius: 1.2,
-        ),
-      ),
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        // Llama al DAO para obtener el ranking
-        future: UserDao.instance.getRanking(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No hay puntuaciones aún", style: TextStyle(color: Colors.white)));
-          }
-
-          final users = snapshot.data!;
-
-          return Column(
+        // Fondo completo del Drawer: #976CE1
+        child: Container(
+          color: const Color(0xFF976CE1),
+          child: ListView(
             children: [
-              const Padding(
-                padding: EdgeInsets.all(20.0),
-                child: Text("Ranking Global", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: users.length,
-                  separatorBuilder: (_, __) => const Divider(color: Colors.white24),
-                  itemBuilder: (context, index) {
-                    final user = users[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.amber,
-                        child: Text("#${index + 1}", style: const TextStyle(color: Colors.black)),
-                      ),
-                      title: Text(user['username'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                      trailing: Text("${user['score']} pts", style: const TextStyle(color: Colors.amberAccent, fontSize: 20, fontWeight: FontWeight.bold)),
-                    );
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16.0),
+              DrawerHeader(
+                decoration: const BoxDecoration(color: Colors.transparent),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final homeState = MyHomePage.globalKey.currentState;
-                          if (homeState != null) {
-                            context.read<MyAppState>().resetGame();
-                            homeState._selectPage(1);
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text("Volver a Jugar"),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.logout),
-                        label: const Text("Cerrar Sesión"),
-                        onPressed: () {
-                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          backgroundColor: Colors.white,
-                        ),
-                      ),
+                    const Text('Menú', style: TextStyle(color: Colors.white, fontSize: 24)),
+                    // Icono de usuario al lado del nombre (NUEVO)
+                    Row(
+                      children: [
+                        const Icon(Icons.person, color: Colors.white70, size: 20),
+                        const SizedBox(width: 8),
+                        Text('${appState.currentUser}', style: const TextStyle(color: Colors.white70)),
+                      ],
                     ),
                   ],
                 ),
-              )
+              ),
+              // Items Juego y Ranking en Blanco
+              ListTile(
+                  leading: const Icon(Icons.gamepad, color: Colors.white),
+                  title: const Text('Juego', style: TextStyle(color: Colors.white)),
+                  onTap: () => _selectPage(1, shouldCloseDrawer: true)
+              ),
+              ListTile(
+                  leading: const Icon(Icons.leaderboard, color: Colors.white),
+                  title: const Text('Ranking', style: TextStyle(color: Colors.white)),
+                  onTap: () => _selectPage(4, shouldCloseDrawer: true)
+              ),
+              // Botón de salir en Morado Oscuro
+              ListTile(
+                  leading: const Icon(Icons.logout, color: Color(0xFF4A148C)), // Morado muy oscuro
+                  title: const Text('Cerrar Sesión', style: TextStyle(color: Color(0xFF4A148C))), // Morado muy oscuro
+                  onTap: () {
+                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                  }
+              ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 }
 
-// --- GAME PAGE ---
+// --- GAME PAGE (Pista y estilo de cuadrícula/teclado MODIFICADO) ---
 class GamePage extends StatefulWidget {
   const GamePage({super.key});
   @override
@@ -491,7 +477,29 @@ class _GamePageState extends State<GamePage> {
               builder: (context, appState, child) {
                 return Column(
                   children: [
-                    if(appState.shouldShowHint) Padding(padding: const EdgeInsets.all(8.0), child: Text("Pista: ${appState.currentHint}")),
+                    // Pista: más abajo, blanco, negrita, con bombilla (MODIFICADO para evitar overflow)
+                    if(appState.shouldShowHint)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 20.0, bottom: 20.0, left: 16.0, right: 16.0), // Añadir padding horizontal
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.lightbulb_outline, color: Colors.white, size: 24), // Icono de bombilla
+                            const SizedBox(width: 8),
+                            Expanded( // Usar Expanded para que el texto ocupe el espacio restante y no se desborde
+                              child: Text(
+                                "Pista: ${appState.currentHint}",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     const Expanded(child: WordleGrid()),
                     Keyboard(
                       keyStatuses: appState.keyStatus,
@@ -509,7 +517,7 @@ class _GamePageState extends State<GamePage> {
 }
 
 // --- UI DEL JUEGO ---
-//  --- WIDGETS DE WORDLE ---
+//  --- WIDGETS DE WORDLE (Rectángulos de la cuadrícula MODIFICADO) ---
 class GridTileUI extends StatelessWidget {
   final String letter;
   final LetterStatus status;
@@ -518,11 +526,14 @@ class GridTileUI extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Morado oscuro para el borde inicial de los rectángulos
+    Color initialBorderColor = const Color(0xFF512DA8); // Morado oscuro
+
     return Container(
       width: 50, height: 50, margin: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: _getBackgroundColor(),
-        border: Border.all(color: _getBorderColor(), width: 2),
+        border: Border.all(color: _getBorderColor(initialBorderColor), width: 2), // Usar el nuevo color
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(child: Text(letter.toUpperCase(), style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _getTextColor()))),
@@ -537,7 +548,8 @@ class GridTileUI extends StatelessWidget {
       default: return Colors.transparent;
     }
   }
-  Color _getBorderColor() => status == LetterStatus.initial ? Colors.grey.shade400 : Colors.transparent;
+  // Función para obtener el color del borde, ahora usa el morado oscuro para el estado inicial
+  Color _getBorderColor(Color initialColor) => status == LetterStatus.initial ? initialColor : Colors.transparent;
   Color _getTextColor() => status == LetterStatus.initial ? Colors.black87 : Colors.white;
 }
 
@@ -560,7 +572,7 @@ class WordleGrid extends StatelessWidget {
   }
 }
 
-// --- WIDGETS DEL TECLADO ---
+// --- WIDGETS DEL TECLADO (Botones en morado oscuro MODIFICADO) ---
 class Keyboard extends StatelessWidget {
   final void Function(String) onLetterPressed;
   final VoidCallback onEnterPressed;
@@ -632,13 +644,133 @@ class KeyButton extends StatelessWidget {
   }
 
   Color _getBackgroundColor() {
+    // Morado oscuro para los botones iniciales del teclado
+    Color initialKeyColor = const Color(0xFF512DA8);
+
     switch (status) {
       case LetterStatus.correct: return Colors.green;
       case LetterStatus.inWord: return Colors.amber;
       case LetterStatus.notInWord: return Colors.grey.shade800;
-      default: return Colors.grey.shade300;
+      default: return initialKeyColor; // Usar morado oscuro para teclas no adivinadas
     }
   }
 
-  Color _getTextColor() => status == LetterStatus.initial ? Colors.black87 : Colors.white;
+  Color _getTextColor() => status == LetterStatus.initial ? Colors.white : Colors.white; // Siempre blanco para el teclado
+}
+
+// --- PANTALLA DE RANKING (MODIFICADA) ---
+class RankingPage extends StatelessWidget {
+  const RankingPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Colores usados en el Ranking
+    Color backgroundColor = const Color(0xFFC6A4FE); // Fondo #C6A4FE
+    Color buttonColor = const Color(0xFF976CE1);     // Botones y puntos #976CE1
+    Color darkPurpleText = const Color(0xFF4A148C);  // Texto de cerrar sesión (del menú)
+
+    return Container(
+      color: backgroundColor, // Fondo completo de la página del ranking
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: UserDao.instance.getRanking(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.white));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text("No hay puntuaciones aún", style: TextStyle(color: Colors.white)));
+          }
+
+          final users = snapshot.data!;
+
+          return Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Text("Ranking", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: users.length,
+                  separatorBuilder: (_, __) => const Divider(color: Colors.white24),
+                  itemBuilder: (context, index) {
+                    final user = users[index];
+                    bool isFirst = index == 0;
+                    return ListTile(
+                      // --- ARREGLO DE CÍRCULO Y NÚMERO ---
+                      leading: CircleAvatar(
+                        backgroundColor: isFirst ? buttonColor : Colors.white, // Círculo: #976CE1 (1º) o Blanco (resto)
+                        child: Text(
+                          "#${index + 1}",
+                          style: TextStyle(
+                            color: isFirst ? Colors.white : darkPurpleText, // Texto: Blanco (1º) o Morado Oscuro (resto)
+                          ),
+                        ),
+                      ),
+                      title: Text(user['username'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                      trailing: Row( // Usar Row para la estrella y los puntos
+                        mainAxisSize: MainAxisSize.min, // Ajustar el tamaño al contenido
+                        children: [
+                          if (isFirst) // Si es el primer puesto, añadir estrella
+                            const Icon(Icons.star, color: Colors.amber, size: 20), // Estrella dorada
+                          const SizedBox(width: 4), // Espacio entre estrella y puntos
+                          Text(
+                            "${user['score']} pts",
+                            style: TextStyle(color: buttonColor, fontSize: 20, fontWeight: FontWeight.bold), // Puntos en morado #976CE1
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final homeState = MyHomePage.globalKey.currentState;
+                          if (homeState != null) {
+                            context.read<MyAppState>().resetGame();
+                            homeState._selectPage(1);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: buttonColor, // Botón en color #976CE1
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text("Volver a Jugar"),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Botón Cerrar Sesión (Mismo estilo que Volver a Jugar)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.logout), // Icono blanco
+                        label: const Text("Cerrar Sesión"), // Texto blanco
+                        onPressed: () {
+                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: buttonColor, // Mismo color que "Volver a Jugar"
+                          foregroundColor: Colors.white, // Texto e icono blancos
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
