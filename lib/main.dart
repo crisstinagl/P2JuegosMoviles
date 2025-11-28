@@ -185,7 +185,6 @@ class MyAppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // CORRECCIÓN: Lógica actualizada para leer la nueva estructura del JSON.
   Future<void> _loadWordBank() async {
     try {
       final String jsonString = await rootBundle.loadString('assets/word_bank.json');
@@ -225,7 +224,6 @@ class MyAppState extends ChangeNotifier {
         print("Secreto ($wordLength letras): $secretWord");
       } else {
         print("No se encontraron palabras de $wordLength letras. Revisa tu archivo 'word_bank.json'");
-        // Asignamos una palabra de la longitud correcta para evitar errores, aunque sea un placeholder.
         secretWord = ''.padRight(wordLength, '!');
         currentHint = "No hay palabras para este modo";
       }
@@ -306,7 +304,13 @@ class MyAppState extends ChangeNotifier {
 
     if (guess == secretWord) {
       gameState = GameState.won;
-      int points = 6 - currentRow;
+      // CAMBIO: Puntuación dinámica según la longitud de la palabra.
+      int points;
+      if (wordLength == 6) {
+        points = 7 - currentRow; // Puntuación para 6 letras (7, 6, 5, 4, 3, 2)
+      } else {
+        points = 6 - currentRow; // Puntuación para 5 letras (6, 5, 4, 3, 2, 1)
+      }
       lastGamePoints = points;
       final userDoc = FirebaseFirestore.instance.collection('users').doc(currentUser);
       await userDoc.update({'score': FieldValue.increment(points)});
