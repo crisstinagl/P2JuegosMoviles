@@ -15,11 +15,10 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // CAMBIO 1: La app ahora empieza con LoginRouter
   runApp(const LoginRouter());
 }
 
-// NUEVO WIDGET: Decide qué pantalla mostrar basado en el estado de autenticación.
+// ROUTER PRINCIPAL: Decide qué pantalla mostrar.
 class LoginRouter extends StatelessWidget {
   const LoginRouter({super.key});
 
@@ -35,7 +34,6 @@ class LoginRouter extends StatelessWidget {
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // Mientras espera, muestra un loading.
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               backgroundColor: Color(0xFFC6A4FE),
@@ -43,18 +41,84 @@ class LoginRouter extends StatelessWidget {
             );
           }
 
-          // Si hay datos de sesión (usuario logueado), vamos a la app principal.
           if (snapshot.hasData) {
-            // El ChangeNotifierProvider ahora envuelve la app principal.
             return ChangeNotifierProvider(
-              create: (context) => MyAppState(snapshot.data!.email!), // Pasa el email del usuario.
-              child: MyHomePage(),
+              create: (context) => MyAppState(snapshot.data!.email!),
+              child: const AppShell(),
             );
           }
 
-          // Si no hay sesión, mostramos la pantalla de login.
           return const LoginScreen();
         },
+      ),
+    );
+  }
+}
+
+// WIDGET SHELL: Controla si se muestra la selección de modo o el juego.
+class AppShell extends StatelessWidget {
+  const AppShell({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<MyAppState>();
+
+    if (appState.isModeSelected) {
+      return MyHomePage();
+    } else {
+      return const GameModeSelectionScreen();
+    }
+  }
+}
+
+
+class GameModeSelectionScreen extends StatelessWidget {
+  const GameModeSelectionScreen({super.key});
+
+  void _selectMode(BuildContext context, int wordLength) {
+    final appState = context.read<MyAppState>();
+    appState.setWordLength(wordLength);
+    appState.resetGame();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFC6A4FE),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Selecciona un modo de juego',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              onPressed: () => _selectMode(context, 5),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: const Color(0xFF976CE1),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('5 Letras'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => _selectMode(context, 6),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: const Color(0xFF976CE1),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('6 Letras'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -65,16 +129,15 @@ class LoginRouter extends StatelessWidget {
 enum LetterStatus { initial, correct, inWord, notInWord }
 enum GameState { playing, won, lost }
 
-// MyApp ya no es necesario, su lógica se movió a LoginRouter
-// Puedes borrar o comentar el widget MyApp original.
-
 // Estado de la aplicación
 class MyAppState extends ChangeNotifier {
   late String secretWord;
   late String currentHint;
   List<Map<String, dynamic>> _wordBank = [];
-  List<List<String>> grid = List.generate(6, (_) => List.filled(5, ''));
-  List<List<LetterStatus>> gridStatus = List.generate(6, (_) => List.filled(5, LetterStatus.initial));
+
+  int wordLength = 5;
+  late List<List<String>> grid;
+  late List<List<LetterStatus>> gridStatus;
   int currentRow = 0;
   int currentCol = 0;
   GameState gameState = GameState.playing;
@@ -83,16 +146,18 @@ class MyAppState extends ChangeNotifier {
 
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // CAMBIO 2: currentUser y currentUsername se inicializan en el constructor.
-  String currentUser; // Email del usuario (ya no puede ser null)
-  String currentUsername; // Nombre de usuario (sin @...)
+  String currentUser;
+  String currentUsername;
   int? lastGamePoints;
+
+  bool isModeSelected = false;
 
   late Future<void> initializationFuture;
 
-  // CAMBIO 3: El constructor ahora recibe el email del usuario.
   MyAppState(this.currentUser)
       : currentUsername = currentUser.split('@')[0] {
+    grid = List.generate(6, (_) => List.filled(wordLength, ''));
+    gridStatus = List.generate(6, (_) => List.filled(wordLength, LetterStatus.initial));
     initializationFuture = _initializeGame();
   }
 
@@ -110,31 +175,66 @@ class MyAppState extends ChangeNotifier {
     super.dispose();
   }
 
+  void setWordLength(int length) {
+    wordLength = length;
+    isModeSelected = true;
+  }
+
+  void returnToModeSelection() {
+    isModeSelected = false;
+    notifyListeners();
+  }
+
+  // CORRECCIÓN: Lógica actualizada para leer la nueva estructura del JSON.
   Future<void> _loadWordBank() async {
     try {
       final String jsonString = await rootBundle.loadString('assets/word_bank.json');
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
-      _wordBank = (jsonMap['words'] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      final List<dynamic> gameModes = jsonMap['game_modes'];
+      final List<Map<String, dynamic>> allWords = [];
+      for (var mode in gameModes) {
+        if (mode['words'] is List) {
+          allWords.addAll((mode['words'] as List).cast<Map<String, dynamic>>());
+        }
+      }
+      _wordBank = allWords;
+
+      if (_wordBank.isEmpty) {
+        print("Advertencia: No se encontraron palabras en 'assets/word_bank.json'. Usando palabra de emergencia.");
+        _wordBank = [{"word": "GAMER", "hint": "Juega mucho"}];
+      }
+
     } catch (e) {
-      print("Error cargando JSON: $e");
+      print("Error cargando el banco de palabras desde JSON: $e");
       _wordBank = [{"word": "GAMER", "hint": "Juega mucho"}];
     }
   }
 
+
   void _generateSecretWord() {
     if (_wordBank.isNotEmpty) {
-      final randomEntry = _wordBank[Random().nextInt(_wordBank.length)];
-      secretWord = randomEntry['word'].toString().toUpperCase();
-      currentHint = randomEntry['hint'].toString();
-      print("Secreto: $secretWord");
+      final filteredWords = _wordBank
+          .where((entry) => entry['word'].toString().length == wordLength)
+          .toList();
+
+      if (filteredWords.isNotEmpty) {
+        final randomEntry = filteredWords[Random().nextInt(filteredWords.length)];
+        secretWord = randomEntry['word'].toString().toUpperCase();
+        currentHint = randomEntry['hint'].toString();
+        print("Secreto ($wordLength letras): $secretWord");
+      } else {
+        print("No se encontraron palabras de $wordLength letras. Revisa tu archivo 'word_bank.json'");
+        // Asignamos una palabra de la longitud correcta para evitar errores, aunque sea un placeholder.
+        secretWord = ''.padRight(wordLength, '!');
+        currentHint = "No hay palabras para este modo";
+      }
     }
   }
 
-  // El método setUser ya no es necesario, puedes borrarlo.
-
   void resetGame() {
-    grid = List.generate(6, (_) => List.filled(5, ''));
-    gridStatus = List.generate(6, (_) => List.filled(5, LetterStatus.initial));
+    grid = List.generate(6, (_) => List.filled(wordLength, ''));
+    gridStatus = List.generate(6, (_) => List.filled(wordLength, LetterStatus.initial));
     currentRow = 0;
     currentCol = 0;
     gameState = GameState.playing;
@@ -146,7 +246,7 @@ class MyAppState extends ChangeNotifier {
   }
 
   void addLetter(String letter) {
-    if (gameState == GameState.playing && currentRow < 6 && currentCol < 5) {
+    if (gameState == GameState.playing && currentRow < 6 && currentCol < wordLength) {
       grid[currentRow][currentCol] = letter;
       currentCol++;
       notifyListeners();
@@ -162,13 +262,14 @@ class MyAppState extends ChangeNotifier {
   }
 
   void submitGuess() async {
-    if (gameState != GameState.playing || currentCol != 5 || currentRow >= 6) return;
+    if (gameState != GameState.playing || currentCol != wordLength || currentRow >= 6) return;
 
     final guess = grid[currentRow].join();
-    final List<LetterStatus> rowStatus = List.filled(5, LetterStatus.notInWord);
-    final List<bool> secretWordUsed = List.filled(5, false);
+    
+    final List<LetterStatus> rowStatus = List.filled(wordLength, LetterStatus.notInWord);
+    final List<bool> secretWordUsed = List.filled(wordLength, false);
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < wordLength; i++) {
       if (guess[i] == secretWord[i]) {
         rowStatus[i] = LetterStatus.correct;
         keyStatus[guess[i]] = LetterStatus.correct;
@@ -176,9 +277,9 @@ class MyAppState extends ChangeNotifier {
       }
     }
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < wordLength; i++) {
       if (rowStatus[i] != LetterStatus.correct) {
-        for (int j = 0; j < 5; j++) {
+        for (int j = 0; j < wordLength; j++) {
           if (!secretWordUsed[j] && guess[i] == secretWord[j]) {
             rowStatus[i] = LetterStatus.inWord;
             secretWordUsed[j] = true;
@@ -191,7 +292,7 @@ class MyAppState extends ChangeNotifier {
       }
     }
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < wordLength; i++) {
       if (rowStatus[i] == LetterStatus.notInWord) {
         if (keyStatus[guess[i]] != LetterStatus.correct && keyStatus[guess[i]] != LetterStatus.inWord) {
           keyStatus[guess[i]] = LetterStatus.notInWord;
@@ -207,10 +308,8 @@ class MyAppState extends ChangeNotifier {
       gameState = GameState.won;
       int points = 6 - currentRow;
       lastGamePoints = points;
-
       final userDoc = FirebaseFirestore.instance.collection('users').doc(currentUser);
       await userDoc.update({'score': FieldValue.increment(points)});
-
     } else if (currentRow == 5) {
       gameState = GameState.lost;
       lastGamePoints = 0;
@@ -235,7 +334,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String _errorMessage = '';
   bool _isLoading = false;
 
-  // CAMBIO 4: _handleLogin ahora es más simple
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final pass = _passController.text.trim();
@@ -251,33 +349,23 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Intenta iniciar sesión
       await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: pass);
-      // Si tiene éxito, el StreamBuilder navegará automáticamente. No necesitamos hacer nada aquí.
-
     } on FirebaseAuthException catch (e) {
-      // Si el usuario no existe, lo creamos
       if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
         try {
           UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: pass);
-
-          // CREAR DOCUMENTO EN FIRESTORE PARA EL NUEVO USUARIO
           await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.email!).set({
             'username': email.split('@')[0],
             'score': 0,
           });
-          // Si el registro tiene éxito, el StreamBuilder navegará automáticamente.
-
         } on FirebaseAuthException catch (e) {
-          // Manejo de errores específicos del registro
           if (e.code == 'weak-password') {
-            setState(() => _errorMessage = "La contraseña es demasiado débil (mín. 6 caracteres)");
+            setState(() => _errorMessage = "La contraseña es muy débil");
           } else {
             setState(() => _errorMessage = "Error en el registro: ${e.message}");
           }
         }
       } else {
-        // Manejo de otros errores de login
         setState(() => _errorMessage = "Error: ${e.message}");
       }
     } finally {
@@ -285,7 +373,6 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isLoading = false);
       }
     }
-    // Ya no se necesita el bloque `if (mounted)` para navegar.
   }
 
   @override
@@ -364,7 +451,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int selectedIndex = 1;
+  int selectedIndex = 1; 
 
   void _selectPage(int index, {bool shouldCloseDrawer = false}) {
     setState(() {
@@ -375,16 +462,12 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Ya no necesitamos appState aquí, se consume en los widgets hijos
     final appState = context.watch<MyAppState>();
     Widget page;
     switch (selectedIndex) {
-      case 0: page = const Center(child: Text("Bienvenido")); break;
       case 1: page = const GamePage(); break;
-      case 2: page = const Center(child: Text("Opciones")); break;
-      case 3: page = const Center(child: Text("Game Over Info")); break;
       case 4: page = const RankingPage(); break;
-      default: throw UnimplementedError();
+      default: page = const GamePage();
     }
 
     return Scaffold(
@@ -392,7 +475,6 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: const Color(0xFFC6A4FE),
         elevation: 0,
         centerTitle: true,
-        // Usamos el username desde el appState
         title: Text(appState.currentUsername, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         iconTheme: const IconThemeData(color: Color(0xFF976CE1)),
       ),
@@ -431,13 +513,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   title: const Text('Ranking', style: TextStyle(color: Colors.white)),
                   onTap: () => _selectPage(4, shouldCloseDrawer: true)
               ),
-              // CAMBIO 5: Simplificamos el logout.
               ListTile(
                   leading: const Icon(Icons.logout, color: Color(0xFF4A148C)),
                   title: const Text('Cerrar Sesión', style: TextStyle(color: Color(0xFF4A148C))),
                   onTap: () {
                     FirebaseAuth.instance.signOut();
-                    // El StreamBuilder en LoginRouter se encargará de navegar a la pantalla de login.
                   }
               ),
             ],
@@ -461,9 +541,7 @@ class _GamePageState extends State<GamePage> {
   void initState() {
     super.initState();
     _appState = context.read<MyAppState>();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _appState.addListener(_checkGameState);
-    });
+    _appState.addListener(_checkGameState);
   }
 
   @override
@@ -473,14 +551,13 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _checkGameState() {
-    if (!mounted) return; // Añadido para seguridad
+    if (!mounted) return;
     if (_appState.gameState != GameState.playing) {
       final myHomePageState = MyHomePage.globalKey.currentState;
       if (myHomePageState != null && myHomePageState.mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Comprobamos de nuevo si está montado por si acaso
           if (myHomePageState.mounted && myHomePageState.selectedIndex != 4) {
-            myHomePageState._selectPage(4, shouldCloseDrawer: false);
+            myHomePageState._selectPage(4);
           }
         });
       }
@@ -577,8 +654,14 @@ class WordleGrid extends StatelessWidget {
       children: List.generate(6, (rowIdx) {
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(5, (colIdx) {
-            return GridTileUI(letter: appState.grid[rowIdx][colIdx], status: appState.gridStatus[rowIdx][colIdx]);
+          children: List.generate(appState.wordLength, (colIdx) {
+            if (appState.grid.length > rowIdx && appState.grid[rowIdx].length > colIdx) {
+              return GridTileUI(
+                letter: appState.grid[rowIdx][colIdx],
+                status: appState.gridStatus[rowIdx][colIdx],
+              );
+            }
+            return Container(); 
           }),
         );
       }),
@@ -666,7 +749,7 @@ class KeyButton extends StatelessWidget {
     }
   }
 
-  Color _getTextColor() => status == LetterStatus.initial ? Colors.white : Colors.white;
+  Color _getTextColor() => Colors.white;
 }
 
 class RankingPage extends StatefulWidget {
@@ -780,8 +863,7 @@ class _RankingPageState extends State<RankingPage> {
                                   decoration: BoxDecoration(
                                     color: (_pointsToShow ?? 0) > 0 ? Colors.green : Colors.red,
                                     borderRadius: BorderRadius.circular(12),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
-                                  ),
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]),
                                   child: Text(
                                     "+${_pointsToShow ?? 0}",
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -821,11 +903,10 @@ class _RankingPageState extends State<RankingPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.logout),
-                        label: const Text("Cerrar Sesión"),
+                        icon: const Icon(Icons.swap_horiz),
+                        label: const Text("Cambiar Modo"),
                         onPressed: () {
-                          FirebaseAuth.instance.signOut();
-                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                          context.read<MyAppState>().returnToModeSelection();
                         },
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
