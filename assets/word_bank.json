@@ -45,7 +45,10 @@
         { "word": "ALBUM", "hint": "Coleccion de canciones" },
         { "word": "PIANO", "hint": "Instrumento clasico" },
         { "word": "SAIKO", "hint": "Cantante granadino" },
+        { "word": "GUAYA", "hint": "Colaboración entre Lucho RK y Quevedo en 2025" },
         { "word": "HOUSE", "hint": "Género electrónico bailable" },
+        { "word": "ALEJO", "hint": "Cantante puertorriqueño" },
+        { "word": "NORIA", "hint": "Una de las primeras canciones que saco Quevedo" },
         { "word": "BOMBO", "hint": "Instrumento de percusión grande." }
       ]
     },
@@ -59,17 +62,21 @@
         { "word": "JUERGA", "hint": "Canción del grupo Kaotiko" },
         { "word": "ESTOPA", "hint": "Famoso dúo español de rock y rumba" },
         { "word": "CARIÑO", "hint": "Banda española de pop" },
-        { "word": "ALEJO", "hint": "Cantante puertorriqueño" },
-        { "word": "NORIA", "hint": "Una de las primeras canciones que saco Quevedo" },
-        { "word": "GUAYA", "hint": "Colaboración entre Lucho RK y Quevedo en 2025" },
         { "word": "DRAGON", "hint": "Cancion de Lola Índigo" },
         { "word": "INDIGO", "hint": "Apellido de la cantante de 'Tamagochi'" },
         { "word": "ACORDE", "hint": "Conjunto de tres o más notas distintas que suenan a la vez" },
         { "word": "RITMOS", "hint": "Los patrones temporales que organizan la música" },
         { "word": "CANTAR", "hint": "La acción principal de un vocalista" },
         { "word": "BAILAR", "hint": "Mover el cuerpo al compás de la música" },
-        { "word": "SONIDO", "hint": "El fenómeno físico que se transmite por el aire" }
-
+        { "word": "SONIDO", "hint": "El fenómeno físico que se transmite por el aire" },
+        { "word": "VIOLIN", "hint": "Instrumento de cuerda frotada" },
+        { "word": "RECORD", "hint": "Grabar o un disco de vinilo" },
+        { "word": "RAPERO", "hint": "Cantante de un genero musical específico" },
+        { "word": "GENERO", "hint": "Categoría o estilo musical" },
+        { "word": "VINILO", "hint": "Formato de música físico y clásico" },
+        { "word": "TICKET", "hint": "Lo necesitas para entrar a un concierto" },
+        { "word": "SINGLE", "hint": "Lanzamiento de una sola canción" },
+        { "word": "VERSOS", "hint": "Las líneas que componen una estrofa" }
       ]
     }
   ]
