@@ -61,6 +61,7 @@ class MyAppState extends ChangeNotifier {
 
   // --- GESTIÓN DE USUARIO ---
   String? currentUser; // Nombre del usuario logueado
+  int? lastGamePoints; // Puntos de la última partida
 
   late Future<void> initializationFuture;
 
@@ -119,6 +120,7 @@ class MyAppState extends ChangeNotifier {
     gameState = GameState.playing;
     shouldShowHint = false;
     keyStatus.clear();
+    lastGamePoints = null; // Limpiar puntos de la partida anterior
     _generateSecretWord();
     notifyListeners();
   }
@@ -193,6 +195,7 @@ class MyAppState extends ChangeNotifier {
       if (currentRow < 6) { // Se usa < 6 para que la última fila dé 1 punto
         points = 6 - currentRow;
       }
+      lastGamePoints = points; // Guardar puntos para la animación
 
       // Guardar en SQLite usando el DAO
       if (currentUser != null && points > 0) {
@@ -201,6 +204,7 @@ class MyAppState extends ChangeNotifier {
 
     } else if (currentRow == 5) {
       gameState = GameState.lost;
+      lastGamePoints = 0; // Guardar 0 puntos para la animación
     }
 
     currentRow++;
@@ -677,29 +681,61 @@ class KeyButton extends StatelessWidget {
 }
 
 // --- PANTALLA DE RANKING (MODIFICADA) ---
-class RankingPage extends StatelessWidget {
+class RankingPage extends StatefulWidget {
   const RankingPage({super.key});
 
   @override
+  State<RankingPage> createState() => _RankingPageState();
+}
+
+class _RankingPageState extends State<RankingPage> {
+  int? _pointsToShow;
+  double _notificationOpacity = 0.0;
+  String? _notificationUser;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final appState = context.read<MyAppState>();
+      if (appState.lastGamePoints != null) {
+        if (mounted) {
+          setState(() {
+            _pointsToShow = appState.lastGamePoints;
+            _notificationUser = appState.currentUser;
+            _notificationOpacity = 1.0;
+          });
+
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() {
+                _notificationOpacity = 0.0;
+              });
+              appState.lastGamePoints = null;
+            }
+          });
+        }
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Colores usados en el Ranking
-    Color backgroundColor = const Color(0xFFC6A4FE); // Fondo #C6A4FE
-    Color buttonColor = const Color(0xFF976CE1);     // Botones y puntos #976CE1
-    Color darkPurpleText = const Color(0xFF4A148C);  // Texto de cerrar sesión (del menú)
+    Color backgroundColor = const Color(0xFFC6A4FE);
+    Color buttonColor = const Color(0xFF976CE1);
+    Color darkPurpleText = const Color(0xFF4A148C);
 
     return Container(
-      color: backgroundColor, // Fondo completo de la página del ranking
+      color: backgroundColor,
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: UserDao.instance.getRanking(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.white));
           }
-
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text("No hay puntuaciones aún", style: TextStyle(color: Colors.white)));
           }
-
           final users = snapshot.data!;
 
           return Column(
@@ -715,28 +751,52 @@ class RankingPage extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final user = users[index];
                     bool isFirst = index == 0;
+                    bool showPointsForThisUser = user['username'] == _notificationUser;
+
                     return ListTile(
-                      // --- ARREGLO DE CÍRCULO Y NÚMERO ---
                       leading: CircleAvatar(
-                        backgroundColor: isFirst ? buttonColor : Colors.white, // Círculo: #976CE1 (1º) o Blanco (resto)
+                        backgroundColor: isFirst ? buttonColor : Colors.white,
                         child: Text(
                           "#${index + 1}",
-                          style: TextStyle(
-                            color: isFirst ? Colors.white : darkPurpleText, // Texto: Blanco (1º) o Morado Oscuro (resto)
-                          ),
+                          style: TextStyle(color: isFirst ? Colors.white : darkPurpleText),
                         ),
                       ),
                       title: Text(user['username'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                      trailing: Row( // Usar Row para la estrella y los puntos
-                        mainAxisSize: MainAxisSize.min, // Ajustar el tamaño al contenido
+                      trailing: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.centerRight,
                         children: [
-                          if (isFirst) // Si es el primer puesto, añadir estrella
-                            const Icon(Icons.star, color: Colors.amber, size: 20), // Estrella dorada
-                          const SizedBox(width: 4), // Espacio entre estrella y puntos
-                          Text(
-                            "${user['score']} pts",
-                            style: TextStyle(color: buttonColor, fontSize: 20, fontWeight: FontWeight.bold), // Puntos en morado #976CE1
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isFirst) const Icon(Icons.star, color: Colors.amber, size: 20),
+                              const SizedBox(width: 4),
+                              Text(
+                                "${user['score']} pts",
+                                style: TextStyle(color: buttonColor, fontSize: 20, fontWeight: FontWeight.bold),
+                              ),
+                            ],
                           ),
+                          if (showPointsForThisUser)
+                            AnimatedOpacity(
+                              opacity: _notificationOpacity,
+                              duration: const Duration(milliseconds: 500),
+                              child: Transform.translate(
+                                offset: const Offset(10, -25),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: (_pointsToShow ?? 0) > 0 ? Colors.green : Colors.red,
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+                                  ),
+                                  child: Text(
+                                    "+${_pointsToShow ?? 0}",
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     );
@@ -759,26 +819,25 @@ class RankingPage extends StatelessWidget {
                         },
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: buttonColor, // Botón en color #976CE1
+                          backgroundColor: buttonColor,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text("Volver a Jugar"),
                       ),
                     ),
                     const SizedBox(height: 10),
-                    // Botón Cerrar Sesión (Mismo estilo que Volver a Jugar)
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.logout), // Icono blanco
-                        label: const Text("Cerrar Sesión"), // Texto blanco
+                        icon: const Icon(Icons.logout),
+                        label: const Text("Cerrar Sesión"),
                         onPressed: () {
                           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
                         },
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: buttonColor, // Mismo color que "Volver a Jugar"
-                          foregroundColor: Colors.white, // Texto e icono blancos
+                          backgroundColor: buttonColor,
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ),
