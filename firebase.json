@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"dj-wordle","appId":"1:363494061058:android:fc92afc18452dcd603231b","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"dj-wordle","configurations":{"android":"1:363494061058:android:fc92afc18452dcd603231b","windows":"1:363494061058:web:ae7582acb0c9337303231b"}}}}}}

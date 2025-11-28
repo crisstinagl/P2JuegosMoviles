@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "363494061058",
+    "project_id": "dj-wordle",
+    "storage_bucket": "dj-wordle.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:363494061058:android:6be6058564392bcc03231b",
+        "android_client_info": {
+          "package_name": "com.MangoStudio.DJWordle"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAupcfF8_9FPM4wi_4vyFe5Lpune1CMJMs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:363494061058:android:fc92afc18452dcd603231b",
+        "android_client_info": {
+          "package_name": "com.example.p2juegosmoviles"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAupcfF8_9FPM4wi_4vyFe5Lpune1CMJMs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

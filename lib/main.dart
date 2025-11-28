@@ -1,47 +1,72 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'user_dao.dart'; // Asegúrate de que este archivo exista
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-  // Inicialización FFI para que funcione en Desktop (Windows, Linux, macOS)
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
-
-  runApp(const MyApp());
+  // CAMBIO 1: La app ahora empieza con LoginRouter
+  runApp(const LoginRouter());
 }
+
+// NUEVO WIDGET: Decide qué pantalla mostrar basado en el estado de autenticación.
+class LoginRouter extends StatelessWidget {
+  const LoginRouter({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'DJ Wordle',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+      ),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // Mientras espera, muestra un loading.
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              backgroundColor: Color(0xFFC6A4FE),
+              body: Center(child: CircularProgressIndicator(color: Colors.white)),
+            );
+          }
+
+          // Si hay datos de sesión (usuario logueado), vamos a la app principal.
+          if (snapshot.hasData) {
+            // El ChangeNotifierProvider ahora envuelve la app principal.
+            return ChangeNotifierProvider(
+              create: (context) => MyAppState(snapshot.data!.email!), // Pasa el email del usuario.
+              child: MyHomePage(),
+            );
+          }
+
+          // Si no hay sesión, mostramos la pantalla de login.
+          return const LoginScreen();
+        },
+      ),
+    );
+  }
+}
+
 
 // Enums
 enum LetterStatus { initial, correct, inWord, notInWord }
 enum GameState { playing, won, lost }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => MyAppState(),
-      child: MaterialApp(
-        title: 'DJ Wordle',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        ),
-        home: const LoginScreen(),
-      ),
-    );
-  }
-}
+// MyApp ya no es necesario, su lógica se movió a LoginRouter
+// Puedes borrar o comentar el widget MyApp original.
 
 // Estado de la aplicación
 class MyAppState extends ChangeNotifier {
@@ -56,16 +81,18 @@ class MyAppState extends ChangeNotifier {
   bool shouldShowHint = false;
   final Map<String, LetterStatus> keyStatus = {};
 
-  // --- GESTIÓN DE MÚSICA ---
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // --- GESTIÓN DE USUARIO ---
-  String? currentUser; // Nombre del usuario logueado
-  int? lastGamePoints; // Puntos de la última partida
+  // CAMBIO 2: currentUser y currentUsername se inicializan en el constructor.
+  String currentUser; // Email del usuario (ya no puede ser null)
+  String currentUsername; // Nombre de usuario (sin @...)
+  int? lastGamePoints;
 
   late Future<void> initializationFuture;
 
-  MyAppState() {
+  // CAMBIO 3: El constructor ahora recibe el email del usuario.
+  MyAppState(this.currentUser)
+      : currentUsername = currentUser.split('@')[0] {
     initializationFuture = _initializeGame();
   }
 
@@ -73,12 +100,10 @@ class MyAppState extends ChangeNotifier {
     await _loadWordBank();
     _generateSecretWord();
 
-    // Iniciar la música de fondo
     _audioPlayer.setReleaseMode(ReleaseMode.loop);
     await _audioPlayer.play(AssetSource('musica.mp3'), volume: 0.4);
   }
 
-  // Liberar recursos del reproductor de audio al cerrar la app
   @override
   void dispose() {
     _audioPlayer.dispose();
@@ -92,7 +117,6 @@ class MyAppState extends ChangeNotifier {
       _wordBank = (jsonMap['words'] as List<dynamic>).cast<Map<String, dynamic>>();
     } catch (e) {
       print("Error cargando JSON: $e");
-      // Fallback
       _wordBank = [{"word": "GAMER", "hint": "Juega mucho"}];
     }
   }
@@ -102,16 +126,12 @@ class MyAppState extends ChangeNotifier {
       final randomEntry = _wordBank[Random().nextInt(_wordBank.length)];
       secretWord = randomEntry['word'].toString().toUpperCase();
       currentHint = randomEntry['hint'].toString();
-      print("Secreto: $secretWord"); // Para depuración
+      print("Secreto: $secretWord");
     }
   }
 
-  void setUser(String username) {
-    currentUser = username;
-    notifyListeners();
-  }
+  // El método setUser ya no es necesario, puedes borrarlo.
 
-  // --- LÓGICA DE JUEGO ---
   void resetGame() {
     grid = List.generate(6, (_) => List.filled(5, ''));
     gridStatus = List.generate(6, (_) => List.filled(5, LetterStatus.initial));
@@ -120,7 +140,7 @@ class MyAppState extends ChangeNotifier {
     gameState = GameState.playing;
     shouldShowHint = false;
     keyStatus.clear();
-    lastGamePoints = null; // Limpiar puntos de la partida anterior
+    lastGamePoints = null;
     _generateSecretWord();
     notifyListeners();
   }
@@ -148,7 +168,6 @@ class MyAppState extends ChangeNotifier {
     final List<LetterStatus> rowStatus = List.filled(5, LetterStatus.notInWord);
     final List<bool> secretWordUsed = List.filled(5, false);
 
-    // Verificación Exacta (Verde)
     for (int i = 0; i < 5; i++) {
       if (guess[i] == secretWord[i]) {
         rowStatus[i] = LetterStatus.correct;
@@ -157,7 +176,6 @@ class MyAppState extends ChangeNotifier {
       }
     }
 
-    // Verificación Parcial (Amarillo)
     for (int i = 0; i < 5; i++) {
       if (rowStatus[i] != LetterStatus.correct) {
         for (int j = 0; j < 5; j++) {
@@ -173,7 +191,6 @@ class MyAppState extends ChangeNotifier {
       }
     }
 
-    // Actualizar Teclado (Gris)
     for (int i = 0; i < 5; i++) {
       if (rowStatus[i] == LetterStatus.notInWord) {
         if (keyStatus[guess[i]] != LetterStatus.correct && keyStatus[guess[i]] != LetterStatus.inWord) {
@@ -186,25 +203,17 @@ class MyAppState extends ChangeNotifier {
 
     if (currentRow == 1) shouldShowHint = true;
 
-    // --- LÓGICA DE VICTORIA Y PUNTUACIÓN ---
     if (guess == secretWord) {
       gameState = GameState.won;
+      int points = 6 - currentRow;
+      lastGamePoints = points;
 
-      // Calcular puntos
-      int points = 0;
-      if (currentRow < 6) { // Se usa < 6 para que la última fila dé 1 punto
-        points = 6 - currentRow;
-      }
-      lastGamePoints = points; // Guardar puntos para la animación
-
-      // Guardar en SQLite usando el DAO
-      if (currentUser != null && points > 0) {
-        await UserDao.instance.addScore(currentUser!, points);
-      }
+      final userDoc = FirebaseFirestore.instance.collection('users').doc(currentUser);
+      await userDoc.update({'score': FieldValue.increment(points)});
 
     } else if (currentRow == 5) {
       gameState = GameState.lost;
-      lastGamePoints = 0; // Guardar 0 puntos para la animación
+      lastGamePoints = 0;
     }
 
     currentRow++;
@@ -213,7 +222,6 @@ class MyAppState extends ChangeNotifier {
   }
 }
 
-// --- LOGIN (YA MODIFICADO) ---
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -222,37 +230,66 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _userController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passController = TextEditingController();
   String _errorMessage = '';
+  bool _isLoading = false;
 
+  // CAMBIO 4: _handleLogin ahora es más simple
   Future<void> _handleLogin() async {
-    final user = _userController.text.trim();
+    final email = _emailController.text.trim();
     final pass = _passController.text.trim();
 
-    if (user.isEmpty || pass.isEmpty) {
-      setState(() => _errorMessage = "Rellena ambos campos");
+    if (email.isEmpty || pass.isEmpty) {
+      setState(() => _errorMessage = "Rellena email y contraseña");
       return;
     }
 
-    bool success = await UserDao.instance.loginOrRegister(user, pass);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
 
-    if (success) {
-      if (mounted) {
-        final appState = context.read<MyAppState>();
-        appState.setUser(user);
-        appState.resetGame();
+    try {
+      // Intenta iniciar sesión
+      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: pass);
+      // Si tiene éxito, el StreamBuilder navegará automáticamente. No necesitamos hacer nada aquí.
 
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MyHomePage()));
+    } on FirebaseAuthException catch (e) {
+      // Si el usuario no existe, lo creamos
+      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        try {
+          UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: pass);
+
+          // CREAR DOCUMENTO EN FIRESTORE PARA EL NUEVO USUARIO
+          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.email!).set({
+            'username': email.split('@')[0],
+            'score': 0,
+          });
+          // Si el registro tiene éxito, el StreamBuilder navegará automáticamente.
+
+        } on FirebaseAuthException catch (e) {
+          // Manejo de errores específicos del registro
+          if (e.code == 'weak-password') {
+            setState(() => _errorMessage = "La contraseña es demasiado débil (mín. 6 caracteres)");
+          } else {
+            setState(() => _errorMessage = "Error en el registro: ${e.message}");
+          }
+        }
+      } else {
+        // Manejo de otros errores de login
+        setState(() => _errorMessage = "Error: ${e.message}");
       }
-    } else {
-      setState(() => _errorMessage = "Contraseña incorrecta para ese usuario");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+    // Ya no se necesita el bloque `if (mounted)` para navegar.
   }
 
   @override
   Widget build(BuildContext context) {
-    // Fondo de color #C6A4FE (Lila Claro)
     return Container(
       color: const Color(0xFFC6A4FE),
       child: Scaffold(
@@ -262,85 +299,55 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo Circular
               ClipOval(
-                child: Image.asset(
-                  'assets/DJ Wordle.png', // <--- RUTA DE TU LOGO
-                  width: 120, // Buen tamaño para un logo en login
-                  height: 120,
-                  fit: BoxFit.cover,
-                ),
+                child: Image.asset('assets/DJ Wordle.png', width: 120, height: 120, fit: BoxFit.cover),
               ),
               const SizedBox(height: 20),
-
-              // Título "Inicio de Sesión" (MODIFICADO)
-              const Text(
-                  "Inicio de Sesión",
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  )
-              ),
-              const SizedBox(height: 10), // Espacio entre título y subtítulo
-
-              // Subtítulo de bienvenida (NUEVO)
-              const Text(
-                  "¡Bienvenido! Inicia sesión para empezar a jugar.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                  )
-              ),
+              const Text("Inicio de Sesión", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 10),
+              const Text("Usa tu email para entrar o registrarte", textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.white70)),
               const SizedBox(height: 40),
-
-              // Campo de Usuario
               TextField(
-                controller: _userController,
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
                 style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: "Usuario",
-                  labelStyle: const TextStyle(color: Colors.white70),
-                  border: const OutlineInputBorder(),
-                  enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-                  // Borde enfocado #976CE1
-                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
+                decoration: const InputDecoration(
+                  labelText: "Email",
+                  labelStyle: TextStyle(color: Colors.white70),
+                  border: OutlineInputBorder(),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
                 ),
               ),
               const SizedBox(height: 20),
-              // Campo de Contraseña
               TextField(
                 controller: _passController,
                 style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: "Contraseña",
-                  labelStyle: const TextStyle(color: Colors.white70),
-                  border: const OutlineInputBorder(),
-                  enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-                  // Borde enfocado #976CE1
-                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
+                  labelStyle: TextStyle(color: Colors.white70),
+                  border: OutlineInputBorder(),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
                 ),
                 obscureText: true,
               ),
               if (_errorMessage.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
-                  child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent)),
+                  child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center,),
                 ),
               const SizedBox(height: 30),
-              // Botón de Login/Registro #976CE1
-              ElevatedButton(
+              _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : ElevatedButton(
                 onPressed: _handleLogin,
                 style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50),
-                    backgroundColor: const Color(0xFF976CE1), // Fondo #976CE1
-                    foregroundColor: Colors.white
-                ),
+                    backgroundColor: const Color(0xFF976CE1),
+                    foregroundColor: Colors.white),
                 child: const Text("ENTRAR / REGISTRARSE"),
               ),
-              const SizedBox(height: 10),
-              const Text("Si el usuario no existe, se creará automáticamente.", style: TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
         ),
@@ -349,7 +356,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// --- PANTALLA PRINCIPAL (AppBar y Drawer Modificados) ---
 class MyHomePage extends StatefulWidget {
   static final GlobalKey<_MyHomePageState> globalKey = GlobalKey<_MyHomePageState>();
   MyHomePage({Key? key}) : super(key: globalKey);
@@ -369,8 +375,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Ya no necesitamos appState aquí, se consume en los widgets hijos
     final appState = context.watch<MyAppState>();
-
     Widget page;
     switch (selectedIndex) {
       case 0: page = const Center(child: Text("Bienvenido")); break;
@@ -382,23 +388,19 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     return Scaffold(
-      // AppBar Modificado: Fondo, título centrado (solo usuario) y hamburguesa de color
       appBar: AppBar(
-        backgroundColor: const Color(0xFFC6A4FE), // Fondo igual al de la GamePage
-        elevation: 0, // Sin sombra
-        centerTitle: true, // Título centrado
-        title: Text( // Solo el nombre de usuario
-            '${appState.currentUser}',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold) // Texto blanco y negrita
-        ),
-        iconTheme: const IconThemeData(color: Color(0xFF976CE1)), // Icono de menú (hamburguesa) del color de los botones
+        backgroundColor: const Color(0xFFC6A4FE),
+        elevation: 0,
+        centerTitle: true,
+        // Usamos el username desde el appState
+        title: Text(appState.currentUsername, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        iconTheme: const IconThemeData(color: Color(0xFF976CE1)),
       ),
       body: Container(
-        color: const Color(0xFFC6A4FE), // Fondo de la pantalla de juego: #C6A4FE
+        color: const Color(0xFFC6A4FE),
         child: page,
       ),
       drawer: Drawer(
-        // Fondo completo del Drawer: #976CE1
         child: Container(
           color: const Color(0xFF976CE1),
           child: ListView(
@@ -409,18 +411,16 @@ class _MyHomePageState extends State<MyHomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Menú', style: TextStyle(color: Colors.white, fontSize: 24)),
-                    // Icono de usuario al lado del nombre (NUEVO)
                     Row(
                       children: [
                         const Icon(Icons.person, color: Colors.white70, size: 20),
                         const SizedBox(width: 8),
-                        Text('${appState.currentUser}', style: const TextStyle(color: Colors.white70)),
+                        Text(appState.currentUsername, style: const TextStyle(color: Colors.white70)),
                       ],
                     ),
                   ],
                 ),
               ),
-              // Items Juego y Ranking en Blanco
               ListTile(
                   leading: const Icon(Icons.gamepad, color: Colors.white),
                   title: const Text('Juego', style: TextStyle(color: Colors.white)),
@@ -431,12 +431,13 @@ class _MyHomePageState extends State<MyHomePage> {
                   title: const Text('Ranking', style: TextStyle(color: Colors.white)),
                   onTap: () => _selectPage(4, shouldCloseDrawer: true)
               ),
-              // Botón de salir en Morado Oscuro
+              // CAMBIO 5: Simplificamos el logout.
               ListTile(
-                  leading: const Icon(Icons.logout, color: Color(0xFF4A148C)), // Morado muy oscuro
-                  title: const Text('Cerrar Sesión', style: TextStyle(color: Color(0xFF4A148C))), // Morado muy oscuro
+                  leading: const Icon(Icons.logout, color: Color(0xFF4A148C)),
+                  title: const Text('Cerrar Sesión', style: TextStyle(color: Color(0xFF4A148C))),
                   onTap: () {
-                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                    FirebaseAuth.instance.signOut();
+                    // El StreamBuilder en LoginRouter se encargará de navegar a la pantalla de login.
                   }
               ),
             ],
@@ -447,7 +448,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-// --- GAME PAGE (Pista y estilo de cuadrícula/teclado MODIFICADO) ---
 class GamePage extends StatefulWidget {
   const GamePage({super.key});
   @override
@@ -473,11 +473,13 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _checkGameState() {
+    if (!mounted) return; // Añadido para seguridad
     if (_appState.gameState != GameState.playing) {
       final myHomePageState = MyHomePage.globalKey.currentState;
       if (myHomePageState != null && myHomePageState.mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (myHomePageState.selectedIndex != 4) {
+          // Comprobamos de nuevo si está montado por si acaso
+          if (myHomePageState.mounted && myHomePageState.selectedIndex != 4) {
             myHomePageState._selectPage(4, shouldCloseDrawer: false);
           }
         });
@@ -496,24 +498,19 @@ class _GamePageState extends State<GamePage> {
               builder: (context, appState, child) {
                 return Column(
                   children: [
-                    // Pista: más abajo, blanco, negrita, con bombilla (MODIFICADO para evitar overflow)
                     if(appState.shouldShowHint)
                       Padding(
-                        padding: const EdgeInsets.only(top: 20.0, bottom: 20.0, left: 16.0, right: 16.0), // Añadir padding horizontal
+                        padding: const EdgeInsets.only(top: 20.0, bottom: 20.0, left: 16.0, right: 16.0),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.lightbulb_outline, color: Colors.white, size: 24), // Icono de bombilla
+                            const Icon(Icons.lightbulb_outline, color: Colors.white, size: 24),
                             const SizedBox(width: 8),
-                            Expanded( // Usar Expanded para que el texto ocupe el espacio restante y no se desborde
+                            Expanded(
                               child: Text(
                                 "Pista: ${appState.currentHint}",
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                               ),
                             ),
                           ],
@@ -538,8 +535,6 @@ class _GamePageState extends State<GamePage> {
   }
 }
 
-// --- UI DEL JUEGO ---
-//  --- WIDGETS DE WORDLE (Rectángulos de la cuadrícula MODIFICADO) ---
 class GridTileUI extends StatelessWidget {
   final String letter;
   final LetterStatus status;
@@ -548,14 +543,12 @@ class GridTileUI extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Morado oscuro para el borde inicial de los rectángulos
-    Color initialBorderColor = const Color(0xFF512DA8); // Morado oscuro
-
+    Color initialBorderColor = const Color(0xFF512DA8);
     return Container(
       width: 50, height: 50, margin: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: _getBackgroundColor(),
-        border: Border.all(color: _getBorderColor(initialBorderColor), width: 2), // Usar el nuevo color
+        border: Border.all(color: _getBorderColor(initialBorderColor), width: 2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(child: Text(letter.toUpperCase(), style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _getTextColor()))),
@@ -570,7 +563,6 @@ class GridTileUI extends StatelessWidget {
       default: return Colors.transparent;
     }
   }
-  // Función para obtener el color del borde, ahora usa el morado oscuro para el estado inicial
   Color _getBorderColor(Color initialColor) => status == LetterStatus.initial ? initialColor : Colors.transparent;
   Color _getTextColor() => status == LetterStatus.initial ? Colors.black87 : Colors.white;
 }
@@ -594,7 +586,6 @@ class WordleGrid extends StatelessWidget {
   }
 }
 
-// --- WIDGETS DEL TECLADO (Botones en morado oscuro MODIFICADO) ---
 class Keyboard extends StatelessWidget {
   final void Function(String) onLetterPressed;
   final VoidCallback onEnterPressed;
@@ -666,21 +657,18 @@ class KeyButton extends StatelessWidget {
   }
 
   Color _getBackgroundColor() {
-    // Morado oscuro para los botones iniciales del teclado
     Color initialKeyColor = const Color(0xFF512DA8);
-
     switch (status) {
       case LetterStatus.correct: return Colors.green;
       case LetterStatus.inWord: return Colors.amber;
       case LetterStatus.notInWord: return Colors.grey.shade800;
-      default: return initialKeyColor; // Usar morado oscuro para teclas no adivinadas
+      default: return initialKeyColor;
     }
   }
 
-  Color _getTextColor() => status == LetterStatus.initial ? Colors.white : Colors.white; // Siempre blanco para el teclado
+  Color _getTextColor() => status == LetterStatus.initial ? Colors.white : Colors.white;
 }
 
-// --- PANTALLA DE RANKING (MODIFICADA) ---
 class RankingPage extends StatefulWidget {
   const RankingPage({super.key});
 
@@ -698,25 +686,30 @@ class _RankingPageState extends State<RankingPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = context.read<MyAppState>();
-      if (appState.lastGamePoints != null) {
-        if (mounted) {
-          setState(() {
-            _pointsToShow = appState.lastGamePoints;
-            _notificationUser = appState.currentUser;
-            _notificationOpacity = 1.0;
-          });
+      if (appState.lastGamePoints != null && mounted) {
+        setState(() {
+          _pointsToShow = appState.lastGamePoints;
+          _notificationUser = appState.currentUsername;
+          _notificationOpacity = 1.0;
+        });
 
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted) {
-              setState(() {
-                _notificationOpacity = 0.0;
-              });
-              appState.lastGamePoints = null;
-            }
-          });
-        }
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            setState(() => _notificationOpacity = 0.0);
+            appState.lastGamePoints = null;
+          }
+        });
       }
     });
+  }
+
+  Future<List<QueryDocumentSnapshot>> _getFirebaseRanking() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .orderBy('score', descending: true)
+        .limit(50)
+        .get();
+    return snapshot.docs;
   }
 
   @override
@@ -727,41 +720,40 @@ class _RankingPageState extends State<RankingPage> {
 
     return Container(
       color: backgroundColor,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: UserDao.instance.getRanking(),
+      child: FutureBuilder<List<QueryDocumentSnapshot>>(
+        future: _getFirebaseRanking(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.white));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No hay puntuaciones aún", style: TextStyle(color: Colors.white)));
+            return const Center(child: Text("Aún no hay ranking", style: TextStyle(color: Colors.white)));
           }
-          final users = snapshot.data!;
+          final userDocs = snapshot.data!;
 
           return Column(
             children: [
               const Padding(
                 padding: EdgeInsets.all(20.0),
-                child: Text("Ranking", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
+                child: Text("Ranking Global", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
               ),
               Expanded(
                 child: ListView.separated(
-                  itemCount: users.length,
+                  itemCount: userDocs.length,
                   separatorBuilder: (_, __) => const Divider(color: Colors.white24),
                   itemBuilder: (context, index) {
-                    final user = users[index];
+                    final userData = userDocs[index].data() as Map<String, dynamic>;
+                    final username = userData['username'] ?? 'N/A';
+                    final score = userData['score'] ?? 0;
                     bool isFirst = index == 0;
-                    bool showPointsForThisUser = user['username'] == _notificationUser;
+                    bool showPointsForThisUser = username == _notificationUser;
 
                     return ListTile(
                       leading: CircleAvatar(
                         backgroundColor: isFirst ? buttonColor : Colors.white,
-                        child: Text(
-                          "#${index + 1}",
-                          style: TextStyle(color: isFirst ? Colors.white : darkPurpleText),
-                        ),
+                        child: Text("#${index + 1}", style: TextStyle(color: isFirst ? Colors.white : darkPurpleText)),
                       ),
-                      title: Text(user['username'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                      title: Text(username, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                       trailing: Stack(
                         clipBehavior: Clip.none,
                         alignment: Alignment.centerRight,
@@ -772,7 +764,7 @@ class _RankingPageState extends State<RankingPage> {
                               if (isFirst) const Icon(Icons.star, color: Colors.amber, size: 20),
                               const SizedBox(width: 4),
                               Text(
-                                "${user['score']} pts",
+                                "$score pts",
                                 style: TextStyle(color: buttonColor, fontSize: 20, fontWeight: FontWeight.bold),
                               ),
                             ],
@@ -832,6 +824,7 @@ class _RankingPageState extends State<RankingPage> {
                         icon: const Icon(Icons.logout),
                         label: const Text("Cerrar Sesión"),
                         onPressed: () {
+                          FirebaseAuth.instance.signOut();
                           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
                         },
                         style: ElevatedButton.styleFrom(
