@@ -18,7 +18,6 @@ void main() async {
   runApp(const LoginRouter());
 }
 
-// ROUTER PRINCIPAL: Decide qué pantalla mostrar.
 class LoginRouter extends StatelessWidget {
   const LoginRouter({super.key});
 
@@ -55,7 +54,6 @@ class LoginRouter extends StatelessWidget {
   }
 }
 
-// WIDGET SHELL: Controla si se muestra la selección de modo o el juego.
 class AppShell extends StatelessWidget {
   const AppShell({super.key});
 
@@ -124,12 +122,9 @@ class GameModeSelectionScreen extends StatelessWidget {
   }
 }
 
-
-// Enums
 enum LetterStatus { initial, correct, inWord, notInWord }
 enum GameState { playing, won, lost }
 
-// Estado de la aplicación
 class MyAppState extends ChangeNotifier {
   late String secretWord;
   late String currentHint;
@@ -304,12 +299,11 @@ class MyAppState extends ChangeNotifier {
 
     if (guess == secretWord) {
       gameState = GameState.won;
-      // CAMBIO: Puntuación dinámica según la longitud de la palabra.
       int points;
       if (wordLength == 6) {
-        points = 7 - currentRow; // Puntuación para 6 letras (7, 6, 5, 4, 3, 2)
+        points = 7 - currentRow;
       } else {
-        points = 6 - currentRow; // Puntuación para 5 letras (6, 5, 4, 3, 2, 1)
+        points = 6 - currentRow;
       }
       lastGamePoints = points;
       final userDoc = FirebaseFirestore.instance.collection('users').doc(currentUser);
@@ -517,6 +511,14 @@ class _MyHomePageState extends State<MyHomePage> {
                   title: const Text('Ranking', style: TextStyle(color: Colors.white)),
                   onTap: () => _selectPage(4, shouldCloseDrawer: true)
               ),
+              ListTile(
+                leading: const Icon(Icons.swap_horiz, color: Colors.white),
+                title: const Text('Cambiar Modo', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  context.read<MyAppState>().returnToModeSelection();
+                },
+              ),
+              const Divider(color: Colors.white24),
               ListTile(
                   leading: const Icon(Icons.logout, color: Color(0xFF4A148C)),
                   title: const Text('Cerrar Sesión', style: TextStyle(color: Color(0xFF4A148C))),
