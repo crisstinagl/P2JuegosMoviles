@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -55,6 +56,9 @@ class MyAppState extends ChangeNotifier {
   bool shouldShowHint = false;
   final Map<String, LetterStatus> keyStatus = {};
 
+  // --- GESTIÓN DE MÚSICA ---
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   // --- GESTIÓN DE USUARIO ---
   String? currentUser; // Nombre del usuario logueado
 
@@ -67,6 +71,17 @@ class MyAppState extends ChangeNotifier {
   Future<void> _initializeGame() async {
     await _loadWordBank();
     _generateSecretWord();
+
+    // Iniciar la música de fondo
+    _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    await _audioPlayer.play(AssetSource('musica.mp3'), volume: 0.4);
+  }
+
+  // Liberar recursos del reproductor de audio al cerrar la app
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
   }
 
   Future<void> _loadWordBank() async {
@@ -501,11 +516,14 @@ class _GamePageState extends State<GamePage> {
                         ),
                       ),
                     const Expanded(child: WordleGrid()),
-                    Keyboard(
-                      keyStatuses: appState.keyStatus,
-                      onLetterPressed: appState.addLetter,
-                      onEnterPressed: appState.submitGuess,
-                      onDeletePressed: appState.deleteLetter,
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20.0),
+                      child: Keyboard(
+                        keyStatuses: appState.keyStatus,
+                        onLetterPressed: appState.addLetter,
+                        onEnterPressed: appState.submitGuess,
+                        onDeletePressed: appState.deleteLetter,
+                      ),
                     )
                   ],
                 );
