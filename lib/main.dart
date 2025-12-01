@@ -62,7 +62,6 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = context.watch<MyAppState>();
 
-    // MODIFICADO: Usar FutureBuilder para esperar la inicialización
     return FutureBuilder(
       future: appState.initializationFuture,
       builder: (context, snapshot) {
@@ -106,6 +105,7 @@ class GameModeSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<MyAppState>();
+    final lang = appState.currentLanguage;
     Color backgroundColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE);
 
     return Scaffold(
@@ -114,8 +114,8 @@ class GameModeSelectionScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Selecciona un modo de juego',
+            Text(
+              Localization.get('selectMode', lang),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
@@ -131,7 +131,7 @@ class GameModeSelectionScreen extends StatelessWidget {
                 backgroundColor: const Color(0xFF976CE1),
                 foregroundColor: Colors.white,
               ),
-              child: const Text('5 Letras'),
+              child: Text(Localization.get('5l', lang)),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -141,7 +141,7 @@ class GameModeSelectionScreen extends StatelessWidget {
                 backgroundColor: const Color(0xFF976CE1),
                 foregroundColor: Colors.white,
               ),
-              child: const Text('6 Letras'),
+              child: Text(Localization.get('6l', lang)),
             ),
           ],
         ),
@@ -151,7 +151,121 @@ class GameModeSelectionScreen extends StatelessWidget {
 }
 
 enum LetterStatus { initial, correct, inWord, notInWord }
+enum Language { spanish, english }
 enum GameState { playing, won, lost }
+
+class Localization {
+  static String get(String key, Language lang) {
+    const Map<String, Map<Language, String>> strings = {
+      'loginTitle': {
+        Language.spanish: 'Inicio de Sesión',
+        Language.english: 'Login',
+      },
+      'loginSubtitle': {
+        Language.spanish: 'Usa tu email para entrar o registrarte',
+        Language.english: 'Use your email to sign in or sign up',
+      },
+      'email': {
+        Language.spanish: 'Email',
+        Language.english: 'Email',
+      },
+      'password': {
+        Language.spanish: 'Contraseña',
+        Language.english: 'Password',
+      },
+      'signInSignUp': {
+        Language.spanish: 'ENTRAR / REGISTRARSE',
+        Language.english: 'SIGN IN / SIGN UP',
+      },
+      'fillEmailPass': {
+        Language.spanish: 'Rellena email y contraseña',
+        Language.english: 'Fill in email and password',
+      },
+      'weakPassword': {
+        Language.spanish: 'La contraseña es muy débil',
+        Language.english: 'The password is too weak',
+      },
+      'registerError': {
+        Language.spanish: 'Error en el registro: ',
+        Language.english: 'Registration error: ',
+      },
+      'error': {
+        Language.spanish: 'Error: ',
+        Language.english: 'Error: ',
+      },
+      'selectMode': {
+        Language.spanish: 'Selecciona un modo de juego',
+        Language.english: 'Select a Game Mode',
+      },
+      'menu': {
+        Language.spanish: 'Menú',
+        Language.english: 'Menu',
+      },
+      'game': {
+        Language.spanish: 'Juego',
+        Language.english: 'Game',
+      },
+      'ranking': {
+        Language.spanish: 'Ranking',
+        Language.english: 'Ranking',
+      },
+      'settings': {
+        Language.spanish: 'Ajustes',
+        Language.english: 'Settings',
+      },
+      'changeMode': {
+        Language.spanish: 'Cambiar Modo',
+        Language.english: 'Change Mode',
+      },
+      '5l': {
+        Language.spanish: '5 letras',
+        Language.english: '5 letters',
+      },
+      '6l': {
+        Language.spanish: '6 letras',
+        Language.english: '6 letters',
+      },
+      'logout': {
+        Language.spanish: 'Cerrar Sesión',
+        Language.english: 'Logout',
+      },
+      'hint': {
+        Language.spanish: 'Pista: ',
+        Language.english: 'Hint: ',
+      },
+      'globalRanking': {
+        Language.spanish: 'Ranking Global',
+        Language.english: 'Global Ranking',
+      },
+      'noRankingYet': {
+        Language.spanish: 'Aún no hay ranking',
+        Language.english: 'No ranking yet',
+      },
+      'playAgain': {
+        Language.spanish: 'Volver a Jugar',
+        Language.english: 'Play Again',
+      },
+      'volume': {
+        Language.spanish: 'Volumen',
+        Language.english: 'Volume',
+      },
+      'darkMode': {
+        Language.spanish: 'Modo Oscuro',
+        Language.english: 'Dark Mode',
+      },
+      'dyslexicFont': {
+        Language.spanish: 'Fuente para Dislexia',
+        Language.english: 'Dyslexic Font',
+      },
+      'language': {
+        Language.spanish: 'Idioma (English)',
+        Language.english: 'Language (Español)',
+      },
+    };
+
+    return strings[key]?[lang] ?? 'MISSING STRING';
+  }
+}
 
 class MyAppState extends ChangeNotifier {
   late String secretWord;
@@ -176,6 +290,7 @@ class MyAppState extends ChangeNotifier {
   double volume = 0.5;
   bool isDarkMode = false;
   bool useDyslexicFont = false;
+  Language currentLanguage = Language.spanish;
 
   bool isModeSelected = false;
 
@@ -210,16 +325,34 @@ class MyAppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleLanguage(bool isEnglish) async {
+    currentLanguage = isEnglish ? Language.english : Language.spanish;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language', currentLanguage.name);
+
+    await _loadWordBank();
+    _generateSecretWord();
+    notifyListeners();
+  }
+
+
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     volume = prefs.getDouble('volume') ?? 0.5;
     isDarkMode = prefs.getBool('isDarkMode') ?? false;
     useDyslexicFont = prefs.getBool('useDyslexicFont') ?? false;
+
+    final langString = prefs.getString('language') ?? Language.spanish.name;
+    try {
+      currentLanguage = Language.values.firstWhere((e) => e.name == langString);
+    } catch (_) {
+      currentLanguage = Language.spanish;
+    }
   }
 
   Future<void> _initializeGame() async {
-    await _loadWordBank();
     await _loadSettings();
+    await _loadWordBank();
     _generateSecretWord();
 
     _audioPlayer.setReleaseMode(ReleaseMode.loop);
@@ -244,7 +377,11 @@ class MyAppState extends ChangeNotifier {
 
   Future<void> _loadWordBank() async {
     try {
-      final String jsonString = await rootBundle.loadString('assets/word_bank.json');
+      final String assetPath = currentLanguage == Language.english
+          ? 'assets/word_bank_en.json'
+          : 'assets/word_bank.json';
+
+      final String jsonString = await rootBundle.loadString(assetPath);
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
 
       final List<dynamic> gameModes = jsonMap['game_modes'];
@@ -257,13 +394,13 @@ class MyAppState extends ChangeNotifier {
       _wordBank = allWords;
 
       if (_wordBank.isEmpty) {
-        print("Advertencia: No se encontraron palabras en 'assets/word_bank.json'. Usando palabra de emergencia.");
-        _wordBank = [{"word": "GAMER", "hint": "Juega mucho"}];
+        print("Advertencia: No se encontraron palabras en el banco. Usando palabra de emergencia.");
+        _wordBank = [{"word": currentLanguage == Language.english ? "AUDIO" : "GAMER", "hint": currentLanguage == Language.english ? "Hear this" : "Juega mucho"}];
       }
 
     } catch (e) {
       print("Error cargando el banco de palabras desde JSON: $e");
-      _wordBank = [{"word": "GAMER", "hint": "Juega mucho"}];
+      _wordBank = [{"word": currentLanguage == Language.english ? "AUDIO" : "GAMER", "hint": currentLanguage == Language.english ? "Hear this" : "Juega mucho"}];
     }
   }
 
@@ -282,7 +419,7 @@ class MyAppState extends ChangeNotifier {
       } else {
         print("No se encontraron palabras de $wordLength letras. Revisa tu archivo 'word_bank.json'");
         secretWord = ''.padRight(wordLength, '!');
-        currentHint = "No hay palabras para este modo";
+        currentHint = currentLanguage == Language.english ? "No words for this mode" : "No hay palabras para este modo"; // Localized fallback
       }
     }
   }
@@ -397,9 +534,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final pass = _passController.text.trim();
+    final lang = context.read<MyAppState>().currentLanguage;
 
     if (email.isEmpty || pass.isEmpty) {
-      setState(() => _errorMessage = "Rellena email y contraseña");
+      setState(() => _errorMessage = Localization.get('fillEmailPass', lang));
       return;
     }
 
@@ -420,13 +558,13 @@ class _LoginScreenState extends State<LoginScreen> {
           });
         } on FirebaseAuthException catch (e) {
           if (e.code == 'weak-password') {
-            setState(() => _errorMessage = "La contraseña es muy débil");
+            setState(() => _errorMessage = Localization.get('weakPassword', lang));
           } else {
-            setState(() => _errorMessage = "Error en el registro: ${e.message}");
+            setState(() => _errorMessage = "${Localization.get('registerError', lang)}${e.message}");
           }
         }
       } else {
-        setState(() => _errorMessage = "Error: ${e.message}");
+        setState(() => _errorMessage = "${Localization.get('error', lang)}${e.message}");
       }
     } finally {
       if (mounted) {
@@ -437,6 +575,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<MyAppState>().currentLanguage;
+
     return Container(
       color: const Color(0xFFC6A4FE),
       child: Scaffold(
@@ -450,17 +590,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Image.asset('assets/DJ_Wordle.png', width: 120, height: 120, fit: BoxFit.cover),
               ),
               const SizedBox(height: 20),
-              const Text("Inicio de Sesión", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(Localization.get('loginTitle', lang), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)), // Localized
               const SizedBox(height: 10),
-              const Text("Usa tu email para entrar o registrarte", textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.white70)),
+              Text(Localization.get('loginSubtitle', lang), textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.white70)), // Localized
               const SizedBox(height: 40),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Email",
-                  labelStyle: TextStyle(color: Colors.white70),
+                decoration: InputDecoration(
+                  labelText: Localization.get('email', lang),
+                  labelStyle: const TextStyle(color: Colors.white70),
                   border: OutlineInputBorder(),
                   enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
                   focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF976CE1), width: 2)),
@@ -470,8 +610,8 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: _passController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Contraseña",
+                decoration: InputDecoration(
+                  labelText: Localization.get('password', lang),
                   labelStyle: TextStyle(color: Colors.white70),
                   border: OutlineInputBorder(),
                   enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
@@ -493,7 +633,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     minimumSize: const Size(double.infinity, 50),
                     backgroundColor: const Color(0xFF976CE1),
                     foregroundColor: Colors.white),
-                child: const Text("ENTRAR / REGISTRARSE"),
+                child: Text(Localization.get('signInSignUp', lang)),
               ),
             ],
           ),
@@ -523,6 +663,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<MyAppState>();
+    final lang = appState.currentLanguage;
     Widget page;
     switch (selectedIndex) {
       case 1: page = const GamePage(); break;
@@ -556,7 +697,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Menú', style: TextStyle(color: Colors.white, fontSize: 24)),
+                    Text(Localization.get('menu', lang), style: const TextStyle(color: Colors.white, fontSize: 24)),
                     Row(
                       children: [
                         const Icon(Icons.person, color: Colors.white70, size: 20),
@@ -569,22 +710,22 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               ListTile(
                   leading: const Icon(Icons.gamepad, color: Colors.white),
-                  title: const Text('Juego', style: TextStyle(color: Colors.white)),
+                  title: Text(Localization.get('game', lang), style: const TextStyle(color: Colors.white)), // Localized
                   onTap: () => _selectPage(1, shouldCloseDrawer: true)
               ),
               ListTile(
                   leading: const Icon(Icons.leaderboard, color: Colors.white),
-                  title: const Text('Ranking', style: TextStyle(color: Colors.white)),
+                  title: Text(Localization.get('ranking', lang), style: const TextStyle(color: Colors.white)), // Localized
                   onTap: () => _selectPage(4, shouldCloseDrawer: true)
               ),
               ListTile(
                   leading: const Icon(Icons.settings, color: Colors.white),
-                  title: const Text('Ajustes', style: TextStyle(color: Colors.white)),
+                  title: Text(Localization.get('settings', lang), style: const TextStyle(color: Colors.white)), // Localized
                   onTap: () => _selectPage(5, shouldCloseDrawer: true)
               ),
               ListTile(
                 leading: const Icon(Icons.swap_horiz, color: Colors.white),
-                title: const Text('Cambiar Modo', style: TextStyle(color: Colors.white)),
+                title: Text(Localization.get('changeMode', lang), style: const TextStyle(color: Colors.white)), // Localized
                 onTap: () {
                   context.read<MyAppState>().returnToModeSelection();
                 },
@@ -592,7 +733,7 @@ class _MyHomePageState extends State<MyHomePage> {
               const Divider(color: Colors.white24),
               ListTile(
                   leading: const Icon(Icons.logout, color: Color(0xFF4A148C)),
-                  title: const Text('Cerrar Sesión', style: TextStyle(color: Color(0xFF4A148C))),
+                  title: Text(Localization.get('logout', lang), style: const TextStyle(color: Color(0xFF4A148C))),
                   onTap: () {
                     FirebaseAuth.instance.signOut();
                   }
@@ -650,6 +791,7 @@ class _GamePageState extends State<GamePage> {
 
           return Consumer<MyAppState>(
               builder: (context, appState, child) {
+                final lang = appState.currentLanguage;
                 return Column(
                   children: [
                     if(appState.shouldShowHint)
@@ -662,7 +804,7 @@ class _GamePageState extends State<GamePage> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                "Pista: ${appState.currentHint}",
+                                "${Localization.get('hint', lang)}${appState.currentHint}",
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                               ),
@@ -845,6 +987,7 @@ class SettingsPage extends StatelessWidget {
     Color backgroundColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE);
     Color accentColor = const Color(0xFF976CE1);
     Color lightText = Colors.white;
+    final lang = appState.currentLanguage;
 
     return Consumer<MyAppState>(
       builder: (context, appState, child) {
@@ -854,7 +997,7 @@ class SettingsPage extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                "Ajustes",
+                Localization.get('settings', lang),
                 style: TextStyle(
                   fontSize: 28,
                   color: lightText,
@@ -875,7 +1018,7 @@ class SettingsPage extends StatelessWidget {
                     Icon(Icons.volume_up, color: lightText),
                     const SizedBox(width: 15),
                     Expanded(
-                      child: Text("Volumen (${(appState.volume * 100).round()}%)",
+                      child: Text("${Localization.get('volume', lang)} (${(appState.volume * 100).round()}%)", // Localized
                           style: TextStyle(color: lightText, fontSize: 16)),
                     ),
                     Expanded(
@@ -899,7 +1042,7 @@ class SettingsPage extends StatelessWidget {
 
               _buildSettingTile(
                 icon: appState.isDarkMode ? Icons.nightlight_round : Icons.wb_sunny,
-                title: 'Modo Oscuro',
+                title: Localization.get('darkMode', lang),
                 value: appState.isDarkMode,
                 onChanged: appState.toggleDarkMode,
                 accentColor: accentColor,
@@ -909,9 +1052,21 @@ class SettingsPage extends StatelessWidget {
 
               _buildSettingTile(
                 icon: Icons.font_download,
-                title: 'Fuente para Dislexia',
+                title: Localization.get('dyslexicFont', lang),
                 value: appState.useDyslexicFont,
                 onChanged: appState.toggleDyslexicFont,
+                accentColor: accentColor,
+                lightText: lightText,
+              ),
+              const SizedBox(height: 10),
+
+              _buildSettingTile(
+                icon: Icons.language,
+                title: Localization.get('language', lang),
+                value: appState.currentLanguage == Language.english,
+                onChanged: (bool isEnglish) {
+                  appState.toggleLanguage(isEnglish);
+                },
                 accentColor: accentColor,
                 lightText: lightText,
               ),
@@ -972,6 +1127,7 @@ class _RankingPageState extends State<RankingPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = context.read<MyAppState>();
+      final lang = appState.currentLanguage;
       if (appState.lastGamePoints != null && mounted) {
         setState(() {
           _pointsToShow = appState.lastGamePoints;
@@ -1001,6 +1157,7 @@ class _RankingPageState extends State<RankingPage> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<MyAppState>();
+    final lang = appState.currentLanguage;
     Color backgroundColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE);
     Color buttonColor = const Color(0xFF976CE1);
     Color darkPurpleText = const Color(0xFF4A148C);
@@ -1014,15 +1171,15 @@ class _RankingPageState extends State<RankingPage> {
             return const Center(child: CircularProgressIndicator(color: Colors.white));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("Aún no hay ranking", style: TextStyle(color: Colors.white)));
+            return Center(child: Text(Localization.get('noRankingYet', lang), style: const TextStyle(color: Colors.white)));
           }
           final userDocs = snapshot.data!;
 
           return Column(
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(20.0),
-                child: Text("Ranking Global", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
+                child: Text(Localization.get('globalRanking', lang), style: const TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
               ),
               Expanded(
                 child: ListView.separated(
@@ -1100,7 +1257,7 @@ class _RankingPageState extends State<RankingPage> {
                           backgroundColor: buttonColor,
                           foregroundColor: Colors.white,
                         ),
-                        child: const Text("Volver a Jugar"),
+                        child: Text(Localization.get('playAgain', lang)),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -1108,7 +1265,7 @@ class _RankingPageState extends State<RankingPage> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.swap_horiz),
-                        label: const Text("Cambiar Modo"),
+                        label: Text(Localization.get('changeMode', lang)),
                         onPressed: () {
                           context.read<MyAppState>().returnToModeSelection();
                         },
