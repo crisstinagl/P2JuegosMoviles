@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,15 +62,33 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = context.watch<MyAppState>();
 
-    return Theme(
-      data: ThemeData(
-        useMaterial3: true,
-        colorScheme: appState.isDarkMode
-            ? ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.dark)
-            : ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        fontFamily: appState.useDyslexicFont ? 'OpenDyslexic' : null,
-      ),
-      child: appState.isModeSelected ? MyHomePage() : const GameModeSelectionScreen(),
+    // MODIFICADO: Usar FutureBuilder para esperar la inicialización
+    return FutureBuilder(
+      future: appState.initializationFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          // Mostrar una pantalla de carga mientras se cargan los ajustes (y el banco de palabras)
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: Scaffold(
+              backgroundColor: const Color(0xFFC6A4FE),
+              body: Center(child: CircularProgressIndicator(color: Colors.white)),
+            ),
+          );
+        }
+
+        // Una vez que la inicialización ha terminado, se aplica el tema y se muestra la pantalla correcta
+        return Theme(
+          data: ThemeData(
+            useMaterial3: true,
+            colorScheme: appState.isDarkMode
+                ? ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.dark)
+                : ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+            fontFamily: appState.useDyslexicFont ? 'OpenDyslexic' : null,
+          ),
+          child: appState.isModeSelected ? MyHomePage() : const GameModeSelectionScreen(),
+        );
+      },
     );
   }
 }
@@ -97,6 +116,7 @@ class GameModeSelectionScreen extends StatelessWidget {
           children: [
             const Text(
               'Selecciona un modo de juego',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -168,24 +188,38 @@ class MyAppState extends ChangeNotifier {
     initializationFuture = _initializeGame();
   }
 
-  void setVolume(double newVolume) {
+  void setVolume(double newVolume) async {
     volume = newVolume;
     _audioPlayer.setVolume(volume);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('volume', newVolume);
     notifyListeners();
   }
 
-  void toggleDarkMode(bool newValue) {
+  void toggleDarkMode(bool newValue) async {
     isDarkMode = newValue;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDarkMode', newValue);
     notifyListeners();
   }
 
-  void toggleDyslexicFont(bool newValue) {
+  void toggleDyslexicFont(bool newValue) async {
     useDyslexicFont = newValue;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('useDyslexicFont', newValue);
     notifyListeners();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    volume = prefs.getDouble('volume') ?? 0.5;
+    isDarkMode = prefs.getBool('isDarkMode') ?? false;
+    useDyslexicFont = prefs.getBool('useDyslexicFont') ?? false;
   }
 
   Future<void> _initializeGame() async {
     await _loadWordBank();
+    await _loadSettings();
     _generateSecretWord();
 
     _audioPlayer.setReleaseMode(ReleaseMode.loop);
