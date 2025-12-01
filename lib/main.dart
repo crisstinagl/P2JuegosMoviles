@@ -61,11 +61,16 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = context.watch<MyAppState>();
 
-    if (appState.isModeSelected) {
-      return MyHomePage();
-    } else {
-      return const GameModeSelectionScreen();
-    }
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        colorScheme: appState.isDarkMode
+            ? ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.dark)
+            : ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        fontFamily: appState.useDyslexicFont ? 'OpenDyslexic' : null,
+      ),
+      child: appState.isModeSelected ? MyHomePage() : const GameModeSelectionScreen(),
+    );
   }
 }
 
@@ -81,8 +86,11 @@ class GameModeSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<MyAppState>();
+    Color backgroundColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFC6A4FE),
+      backgroundColor: backgroundColor,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -145,6 +153,10 @@ class MyAppState extends ChangeNotifier {
   String currentUsername;
   int? lastGamePoints;
 
+  double volume = 0.5;
+  bool isDarkMode = false;
+  bool useDyslexicFont = false;
+
   bool isModeSelected = false;
 
   late Future<void> initializationFuture;
@@ -156,12 +168,28 @@ class MyAppState extends ChangeNotifier {
     initializationFuture = _initializeGame();
   }
 
+  void setVolume(double newVolume) {
+    volume = newVolume;
+    _audioPlayer.setVolume(volume);
+    notifyListeners();
+  }
+
+  void toggleDarkMode(bool newValue) {
+    isDarkMode = newValue;
+    notifyListeners();
+  }
+
+  void toggleDyslexicFont(bool newValue) {
+    useDyslexicFont = newValue;
+    notifyListeners();
+  }
+
   Future<void> _initializeGame() async {
     await _loadWordBank();
     _generateSecretWord();
 
     _audioPlayer.setReleaseMode(ReleaseMode.loop);
-    await _audioPlayer.play(AssetSource('musica.mp3'), volume: 0.4);
+    await _audioPlayer.play(AssetSource('musica.mp3'), volume: volume);
   }
 
   @override
@@ -465,24 +493,28 @@ class _MyHomePageState extends State<MyHomePage> {
     switch (selectedIndex) {
       case 1: page = const GamePage(); break;
       case 4: page = const RankingPage(); break;
+      case 5: page = const SettingsPage(); break;
       default: page = const GamePage();
     }
 
+    Color mainBgColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE); // Dark Purple for background
+    Color drawerBgColor = appState.isDarkMode ? const Color(0xFF4A008C) : const Color(0xFF976CE1); // Slightly lighter Dark Purple for drawer
+
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFFC6A4FE),
+        backgroundColor: mainBgColor, // Use determined color
         elevation: 0,
         centerTitle: true,
         title: Text(appState.currentUsername, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         iconTheme: const IconThemeData(color: Color(0xFF976CE1)),
       ),
       body: Container(
-        color: const Color(0xFFC6A4FE),
+        color: mainBgColor, // Use determined color
         child: page,
       ),
       drawer: Drawer(
         child: Container(
-          color: const Color(0xFF976CE1),
+          color: drawerBgColor, // Use determined color
           child: ListView(
             children: [
               DrawerHeader(
@@ -510,6 +542,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   leading: const Icon(Icons.leaderboard, color: Colors.white),
                   title: const Text('Ranking', style: TextStyle(color: Colors.white)),
                   onTap: () => _selectPage(4, shouldCloseDrawer: true)
+              ),
+              ListTile(
+                  leading: const Icon(Icons.settings, color: Colors.white),
+                  title: const Text('Ajustes', style: TextStyle(color: Colors.white)),
+                  onTap: () => _selectPage(5, shouldCloseDrawer: true)
               ),
               ListTile(
                 leading: const Icon(Icons.swap_horiz, color: Colors.white),
@@ -634,7 +671,7 @@ class GridTileUI extends StatelessWidget {
         border: Border.all(color: _getBorderColor(initialBorderColor), width: 2),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Center(child: Text(letter.toUpperCase(), style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _getTextColor()))),
+      child: Center(child: Text(letter.toUpperCase(), style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _getTextColor(context)))),
     );
   }
 
@@ -647,7 +684,14 @@ class GridTileUI extends StatelessWidget {
     }
   }
   Color _getBorderColor(Color initialColor) => status == LetterStatus.initial ? initialColor : Colors.transparent;
-  Color _getTextColor() => status == LetterStatus.initial ? Colors.black87 : Colors.white;
+  Color _getTextColor(BuildContext context) {
+    if (status != LetterStatus.initial) {
+      return Colors.white;
+    }
+
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return isDarkMode ? Colors.white : Colors.black87;
+  }
 }
 
 class WordleGrid extends StatelessWidget {
@@ -758,6 +802,125 @@ class KeyButton extends StatelessWidget {
   Color _getTextColor() => Colors.white;
 }
 
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<MyAppState>();
+    Color backgroundColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE);
+    Color accentColor = const Color(0xFF976CE1);
+    Color lightText = Colors.white;
+
+    return Consumer<MyAppState>(
+      builder: (context, appState, child) {
+        return Container(
+          color: backgroundColor,
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            children: [
+              Text(
+                "Ajustes",
+                style: TextStyle(
+                  fontSize: 28,
+                  color: lightText,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 30),
+
+              // --- Volume Control ---
+              Container(
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.volume_up, color: lightText),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Text("Volumen (${(appState.volume * 100).round()}%)",
+                          style: TextStyle(color: lightText, fontSize: 16)),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Slider(
+                        value: appState.volume,
+                        min: 0.0,
+                        max: 1.0,
+                        divisions: 10,
+                        activeColor: lightText,
+                        inactiveColor: lightText.withOpacity(0.5),
+                        onChanged: (double value) {
+                          appState.setVolume(value);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              _buildSettingTile(
+                icon: appState.isDarkMode ? Icons.nightlight_round : Icons.wb_sunny,
+                title: 'Modo Oscuro',
+                value: appState.isDarkMode,
+                onChanged: appState.toggleDarkMode,
+                accentColor: accentColor,
+                lightText: lightText,
+              ),
+              const SizedBox(height: 10),
+
+              _buildSettingTile(
+                icon: Icons.font_download,
+                title: 'Fuente para Dislexia',
+                value: appState.useDyslexicFont,
+                onChanged: appState.toggleDyslexicFont,
+                accentColor: accentColor,
+                lightText: lightText,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+Widget _buildSettingTile({
+  required IconData icon,
+  required String title,
+  required bool value,
+  required ValueChanged<bool> onChanged,
+  required Color accentColor,
+  required Color lightText,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      color: accentColor.withOpacity(0.8),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+    child: Row(
+      children: [
+        Icon(icon, color: lightText),
+        const SizedBox(width: 15),
+        Expanded(
+          child: Text(title, style: TextStyle(color: lightText, fontSize: 16)),
+        ),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeColor: lightText,
+          activeTrackColor: accentColor,
+        ),
+      ],
+    ),
+  );
+}
+
 class RankingPage extends StatefulWidget {
   const RankingPage({super.key});
 
@@ -803,7 +966,8 @@ class _RankingPageState extends State<RankingPage> {
 
   @override
   Widget build(BuildContext context) {
-    Color backgroundColor = const Color(0xFFC6A4FE);
+    final appState = context.watch<MyAppState>();
+    Color backgroundColor = appState.isDarkMode ? const Color(0xFF1E003D) : const Color(0xFFC6A4FE);
     Color buttonColor = const Color(0xFF976CE1);
     Color darkPurpleText = const Color(0xFF4A148C);
 

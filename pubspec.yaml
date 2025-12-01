@@ -34,6 +34,14 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  fonts:
+    - family: OpenDyslexic
+      fonts:
+        - asset: assets/OpenDyslexic-Regularr.otf
+        - asset: assets/OpenDyslexic-Boldd.otf
+          weight: 500
+
   assets:
     - assets/
     - assets/musica.mp3
