@@ -15,7 +15,6 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-
   runApp(const LoginRouter());
 }
 
@@ -24,33 +23,36 @@ class LoginRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'DJ Wordle',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: Scaffold(
               backgroundColor: Color(0xFFC6A4FE),
               body: Center(child: CircularProgressIndicator(color: Colors.white)),
-            );
-          }
+            ),
+          );
+        }
 
-          if (snapshot.hasData) {
-            return ChangeNotifierProvider(
-              create: (context) => MyAppState(snapshot.data!.email!),
-              child: const AppShell(),
-            );
-          }
+        final userEmail = snapshot.data?.email ?? 'guest@djwordle.com';
 
-          return const LoginScreen();
-        },
-      ),
+        return ChangeNotifierProvider(
+          key: ValueKey(userEmail),
+          create: (_) => MyAppState(userEmail),
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'DJ Wordle',
+            theme: ThemeData(
+              useMaterial3: true,
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+            ),
+            home: snapshot.hasData ? const AppShell() : const LoginScreen(),
+          ),
+        );
+      },
     );
   }
 }
@@ -457,7 +459,7 @@ class MyAppState extends ChangeNotifier {
     if (gameState != GameState.playing || currentCol != wordLength || currentRow >= 6) return;
 
     final guess = grid[currentRow].join();
-    
+
     final List<LetterStatus> rowStatus = List.filled(wordLength, LetterStatus.notInWord);
     final List<bool> secretWordUsed = List.filled(wordLength, false);
 
@@ -651,7 +653,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int selectedIndex = 1; 
+  int selectedIndex = 1;
 
   void _selectPage(int index, {bool shouldCloseDrawer = false}) {
     setState(() {
@@ -887,7 +889,7 @@ class WordleGrid extends StatelessWidget {
                 status: appState.gridStatus[rowIdx][colIdx],
               );
             }
-            return Container(); 
+            return Container();
           }),
         );
       }),
@@ -1222,9 +1224,9 @@ class _RankingPageState extends State<RankingPage> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: (_pointsToShow ?? 0) > 0 ? Colors.green : Colors.red,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]),
+                                      color: (_pointsToShow ?? 0) > 0 ? Colors.green : Colors.red,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]),
                                   child: Text(
                                     "+${_pointsToShow ?? 0}",
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
